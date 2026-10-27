@@ -1,0 +1,4 @@
+# dsh-subscription-management bundle patch.
+- insert:
+    - id: dsh-subscription-management
+      name: dsh-subscription-management

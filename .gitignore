@@ -1,0 +1,31 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 打包与构建产物
+dist/
+*.tgz
+*.zip
+
+# 临时文件与缓存
+tmp/
+.tmp/
+.cache/
+coverage/
+
+# 日志
+*.log
+logs/
+
+# 编辑器与系统
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# 本地密钥
+.env
+.env.*
+*.env
+*.pem
+*.key

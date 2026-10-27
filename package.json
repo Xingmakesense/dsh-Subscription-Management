@@ -1,0 +1,77 @@
+{
+  "name": "dsh-subscription-management",
+  "version": "1.0.0",
+  "description": "dsh-Subscription-Management：多厂商订阅认证、额度卡片与 DeepSeek 余额/今日用量。 · Multi-vendor subscription authentication, quota card, and DeepSeek account balance.",
+  "type": "module",
+  "main": "host.js",
+  "exports": {
+    ".": "./host.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "client.js",
+    "client/runtime.js",
+    "client/options.js",
+    "client/subscription-catalog.js",
+    "client/quota.js",
+    "client/deepseek-balance.js",
+    "client/balance-card.js",
+    "client/quota-settings.js",
+    "client/styles.js",
+    "client/apply.js",
+    "host.js",
+    "host/options.js",
+    "host/status.js",
+    "host/accounts.js",
+    "host/subscriptions/catalog.js",
+    "host/subscriptions/credentials.js",
+    "host/subscriptions/http.js",
+    "host/subscriptions/index.js",
+    "host/subscriptions/kimi-oauth.js",
+    "host/subscriptions/usage.js",
+    "subscriptions.json",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "MAINTENANCE.md",
+    "UPLOAD-TO-GITHUB.md",
+    "LICENSE",
+    "scripts/build-client.mjs",
+    "scripts/build-tgz.ps1",
+    "verify-host.cjs",
+    "verify-client.mjs",
+    "verify-subscriptions.mjs",
+    "verify-compat.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build:client": "node scripts/build-client.mjs",
+    "check": "node scripts/build-client.mjs --check && node --check client.js && node --check host.js && node --check host/options.js && node --check host/status.js && node --check host/accounts.js && node --check host/subscriptions/catalog.js && node --check host/subscriptions/credentials.js && node --check host/subscriptions/http.js && node --check host/subscriptions/index.js && node --check host/subscriptions/kimi-oauth.js && node --check host/subscriptions/usage.js && node --check scripts/build-client.mjs",
+    "test": "node scripts/build-client.mjs --check && node verify-host.cjs && node verify-client.mjs && node verify-subscriptions.mjs && node verify-compat.mjs"
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "keywords": [
+    "dsh",
+    "plugin",
+    "subscription",
+    "quota",
+    "oauth",
+    "kimi",
+    "deepseek"
+  ],
+  "author": "June M",
+  "license": "MIT"
+}
