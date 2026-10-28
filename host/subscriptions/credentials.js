@@ -117,7 +117,7 @@ export function normalizeStoredRecord(vendor, value) {
     if (parsed?.kind === "cli-link" && nonEmpty(parsed.path) !== undefined) {
         return { ...parsed, version: 1, source: "cli" };
     }
-    if (parsed?.version === 1 && ["api-key", "oauth", "session", "cookie", "api-config"].includes(parsed.kind)) {
+    if (parsed?.version === 1 && ["api-key", "api-key-groups", "oauth", "session", "cookie", "api-config"].includes(parsed.kind)) {
         return { ...parsed, source: parsed.source === "cli" ? "cli" : "manual" };
     }
     return { version: 1, kind: "legacy", secret: String(value), source: "manual", needsReconnect: true };
@@ -319,6 +319,51 @@ export async function saveManualCredential(scope, vendor, credential) {
     return vendorAuthStatus(scope, vendor);
 }
 
+function requireProtocomGroup(vendor, group) {
+    if (vendor.id !== "protocom" || !vendor.groups?.some((entry) => entry.id === group)) {
+        throw new SubscriptionCredentialError("未知 Protocom 分组", "UNSUPPORTED");
+    }
+    return group;
+}
+
+/** Save one Protocom group without replacing the other group keys. */
+export async function saveGroupCredential(scope, vendor, group, credential) {
+    requireProtocomGroup(vendor, group);
+    if (credential.kind !== "api-key") {
+        throw new SubscriptionCredentialError("Protocom 分组仅支持 API Key", "UNSUPPORTED");
+    }
+    const previous = await readStoredRecord(scope, vendor);
+    const secrets = previous?.kind === "api-key-groups" && previous.secret !== null && typeof previous.secret === "object"
+        ? { ...previous.secret }
+        : previous?.kind === "api-key" && typeof previous.secret === "string"
+            ? { aggregate: previous.secret }
+            : {};
+    secrets[group] = credential.secret;
+    await writeVendorCredential(scope, vendor, {
+        ...(previous?.kind === "api-key-groups" ? previous : {}),
+        kind: "api-key-groups",
+        secret: secrets,
+        source: "manual",
+        groupStates: {
+            ...(previous?.kind === "api-key-groups" ? previous.groupStates : {}),
+            [group]: { configured: true, verified: false }
+        }
+    });
+    return vendorAuthStatus(scope, vendor);
+}
+
+/** Read a key only after the local user explicitly opens the credential card. */
+export async function readApiKeyCredential(scope, vendor, group) {
+    const resolved = await resolveVendorCredential(scope, vendor);
+    if (resolved?.kind === "api-key") return resolved.secret;
+    if (resolved?.kind === "api-key-groups") {
+        requireProtocomGroup(vendor, group);
+        const value = resolved.secret?.[group];
+        if (typeof value === "string" && value.length > 0) return value;
+    }
+    throw new SubscriptionCredentialError(`${vendor.name} 没有可读取的 API Key`);
+}
+
 export function credentialFromInput(vendor, kind, input) {
     if (kind === "oauth") {
         let parsed = input;
@@ -400,6 +445,66 @@ export async function markVendorVerification(scope, vendor, resolved, { success,
     if (success === true) await writeLastVerifiedVendor(scope, vendor);
 }
 
+export async function markGroupVerification(scope, vendor, group, secret, { success, plan, accountName, error, verification }) {
+    requireProtocomGroup(vendor, group);
+    const stored = await readStoredRecord(scope, vendor);
+    if (stored?.kind !== "api-key-groups") return;
+    const fingerprint = fingerprintCredential({ kind: "api-key", secret });
+    const previous = stored.groupStates?.[group] ?? {};
+    const state = {
+        configured: true,
+        verified: success === true,
+        verifiedFingerprint: success === true ? fingerprint : undefined,
+        verifiedAt: success === true ? Date.now() : undefined,
+        plan: success === true ? nonEmpty(plan) : previous.plan,
+        accountName: success === true ? nonEmpty(accountName) : previous.accountName,
+        verification: success === true ? nonEmpty(verification) ?? "subscription" : previous.verification,
+        error: success === true ? undefined : nonEmpty(error) ?? "认证验证失败"
+    };
+    await writeStoredRecord(scope, vendor, {
+        ...stored,
+        lastGroup: group,
+        plan: success === true ? nonEmpty(plan) : stored.plan,
+        groupStates: { ...stored.groupStates, [group]: state }
+    });
+    if (success === true) await writeLastVerifiedVendor(scope, vendor);
+}
+
+function groupedAuthStatus(vendor, stored) {
+    const groups = {};
+    let verifiedCount = 0;
+    for (const definition of vendor.groups ?? []) {
+        const secret = stored.secret?.[definition.id];
+        const configured = typeof secret === "string" && secret.length > 0;
+        const state = stored.groupStates?.[definition.id] ?? {};
+        const fingerprint = configured ? fingerprintCredential({ kind: "api-key", secret }) : undefined;
+        const verified = configured && state.verifiedFingerprint === fingerprint;
+        if (verified) verifiedCount += 1;
+        groups[definition.id] = {
+            configured,
+            authenticated: verified,
+            verified,
+            plan: state.plan,
+            accountName: state.accountName,
+            verification: state.verification,
+            verifiedAt: verified ? state.verifiedAt : undefined,
+            error: state.error
+        };
+    }
+    const configured = Object.values(groups).some((entry) => entry.configured);
+    const verified = verifiedCount > 0;
+    return {
+        configured,
+        authenticated: verified,
+        verified,
+        method: "api-key-groups",
+        source: stored.source,
+        group: stored.lastGroup,
+        plan: stored.plan,
+        groups
+    };
+}
+
 export async function vendorAuthStatus(scope, vendor, { includeApiConfig = true } = {}) {
     const stored = await readStoredRecord(scope, vendor);
     if (stored === undefined) {
@@ -414,6 +519,7 @@ export async function vendorAuthStatus(scope, vendor, { includeApiConfig = true 
             error: "旧版凭据需要重新认证"
         };
     }
+    if (stored.kind === "api-key-groups") return groupedAuthStatus(vendor, stored);
     let resolved;
     try {
         resolved = await resolveVendorCredential(scope, vendor);

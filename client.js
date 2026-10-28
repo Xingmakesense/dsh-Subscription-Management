@@ -175,6 +175,60 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     "consoleUrl": "https://www.trae.cn",
     "authHint": "登录 trae.cn 后，粘贴 API 仪表盘请求中的 Cookie。短期交换 Token 仅在 Host 内使用，不保存。",
     "modelAliases": ["trae", "traecn"]
+  },
+  {
+    "id": "protocom",
+    "name": "Protocom",
+    "plan": "Protocom 官方 API",
+    "methods": ["api-key"],
+    "usage": "protocom",
+    "api": "open",
+    "host": "protocom.org",
+    "consoleUrl": "https://relay.protocom.org",
+    "authHint": "分别填写需要启用的 Protocom 分组 API Key；模型、协议、图片和档位在 DSH 原生模型设置中管理。",
+    "modelAliases": ["protocom-aggregate", "protocom-codex", "protocom-stepfun", "protocom-grok"],
+    "groups": [
+      { "id": "aggregate", "name": "Aggregate", "plan": "Protocom Aggregate" },
+      { "id": "codex", "name": "Codex", "plan": "Protocom Codex" },
+      { "id": "stepfun", "name": "StepFun", "plan": "Protocom StepFun" },
+      { "id": "grok", "name": "Grok", "plan": "Protocom Grok" }
+    ]
+  },
+  {
+    "id": "opencode-go",
+    "name": "OpenCode Go",
+    "plan": "OpenCode Go 订阅",
+    "methods": ["api-key"],
+    "usage": "opencode-go",
+    "api": "open",
+    "host": "opencode.ai",
+    "consoleUrl": "https://opencode.ai/zen/go",
+    "authHint": "使用 OpenCode Go 订阅 API Key。模型与上下文档位在 DSH 原生模型设置中管理。",
+    "modelAliases": ["opencode-go-sub"]
+  },
+  {
+    "id": "commandcode",
+    "name": "Command Code",
+    "plan": "Command Code 订阅",
+    "methods": ["api-key"],
+    "usage": "commandcode",
+    "api": "open",
+    "host": "commandcode.ai",
+    "consoleUrl": "https://commandcode.ai",
+    "authHint": "使用 Command Code 订阅 API Key。套餐可用模型由厂商账户信息决定。",
+    "modelAliases": ["commandcode"]
+  },
+  {
+    "id": "clinepass",
+    "name": "ClinePass",
+    "plan": "ClinePass 订阅",
+    "methods": ["api-key"],
+    "usage": "clinepass",
+    "api": "open",
+    "host": "cline.bot",
+    "consoleUrl": "https://cline.bot",
+    "authHint": "使用 ClinePass 订阅 API Key。厂商没有已确认的余额或配额读取端点。",
+    "modelAliases": ["clinepass", "cline-pass"]
   }
 ]
 );
@@ -633,6 +687,13 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             const text = `${typeof model === "string" ? model : ""} ${typeof provider === "string" ? provider : ""}`
                 .toLowerCase();
             if (text.trim().length === 0) return undefined;
+            const route = typeof provider === "string" && provider.length > 0
+                ? provider.toLowerCase()
+                : text.trim().split(/\s+/)[0];
+            const exact = SUBSCRIPTION_VENDORS.find((vendor) =>
+                [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
+                    .some((alias) => route === String(alias).toLowerCase()));
+            if (exact !== undefined) return exact.id;
             const match = SUBSCRIPTION_VENDORS.find((vendor) =>
                 [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
                     .some((alias) => text.includes(String(alias).toLowerCase())));
@@ -640,10 +701,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
         }
 
         /** Pure card projection, also used by regression tests. */
-        function balanceCardView(kimiState, deepState) {
+        function balanceCardView(kimiState, deepState, modelLabel) {
             const slots = quotaSlots(kimiState?.usage);
             const data = deepState?.data;
             const deepCurrency = data?.currency ?? DEEPSEEK_FALLBACK_CURRENCY;
+            const vendor = SUBSCRIPTION_VENDORS.find((item) => item.id === kimiState?.vendor);
             const vendorName = subscriptionVendorName(kimiState?.vendor);
             const balanceText = formatCurrencyAmount(data?.totalBalance, deepCurrency) ?? "—";
             const todayText = formatCurrencyAmount(
@@ -699,6 +761,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             }
             return {
                 vendorName,
+                modelName: typeof modelLabel === "string" && modelLabel.length > 0 ? modelLabel : "当前模型",
+                planName: kimiState?.usage?.plan ?? vendor?.plan ?? "订阅",
                 slots: views,
                 renderedSlots: renderedViews,
                 balanceText,
@@ -724,6 +788,29 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     color: var(--dsw-alias-label-secondary);
     font-size: 11px;
     line-height: 15px;
+}
+.dsh-uak-balanceContext {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.dsh-uak-balanceModel {
+    overflow: hidden;
+    color: var(--dsw-alias-label-primary);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dsh-uak-balancePlan {
+    overflow: hidden;
+    color: var(--dsw-alias-label-caption);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .dsh-uak-balanceRings {
     display: flex;
@@ -978,7 +1065,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
         function BalanceCard({ rpc, wide, useSessions }) {
             const [kimiState, refreshKimi] = useQuotaController(rpc, { autoStart: false });
             const [deepState, refreshDeep] = useDeepSeekController(rpc);
-            const view = balanceCardView(kimiState, deepState);
             const narrow = wide === false;
             const preferredVendor = react.useRef(undefined);
             const initialRequested = react.useRef(false);
@@ -992,6 +1078,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             const sessionsHook = typeof useSessions === "function" ? useSessions : useNoSessions;
             const runningIds = sessionsHook(runningSessionIds);
             const modelLabel = sessionsHook(activeModelLabel);
+            const view = balanceCardView(kimiState, deepState, modelLabel);
             const previousRunning = react.useRef(runningIds);
             react.useEffect(() => {
                 const ended = endedRunningSessions(previousRunning.current, runningIds);
@@ -1036,7 +1123,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         className: "dsh-uak-balanceCard dsh-uak-balanceNarrow",
                         role: "button",
                         tabIndex: 0,
-                        title: `${view.title}\n\n点击刷新`,
                         "aria-label": `${view.title}。点击刷新`,
                         "aria-busy": busy,
                         "data-dsh-plugin": name,
@@ -1065,11 +1151,22 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 "section",
                 {
                     className: "dsh-uak-balanceCard",
-                    title: view.title,
-                    "aria-label": "今日消耗与剩余余额",
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": "今日消耗与剩余余额。点击刷新",
                     "aria-busy": busy,
-                    "data-dsh-plugin": name
+                    "data-dsh-plugin": name,
+                    onClick: refreshAll,
+                    onKeyDown: (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            refreshAll();
+                        }
+                    }
                 },
+                react.createElement("div", { className: "dsh-uak-balanceContext" },
+                    react.createElement("span", { className: "dsh-uak-balanceModel", title: view.modelName }, view.modelName),
+                    react.createElement("span", { className: "dsh-uak-balancePlan", title: view.planName }, view.planName)),
                 react.createElement("div", { className: "dsh-uak-balanceRings" },
                     view.slots.length === 0
                         ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
@@ -1087,22 +1184,13 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         "data-state": view.accountState,
                         "aria-hidden": true
                     }),
-                    react.createElement("span", { className: "dsh-uak-accountText" }, `${view.vendorName} · DeepSeek 账户`),
-                    react.createElement("button", {
-                        type: "button",
-                        className: "dsh-uak-balanceRefresh",
-                        title: "刷新订阅额度与 DeepSeek 余额",
-                        "aria-label": "刷新订阅额度与 DeepSeek 余额",
-                        disabled: busy,
-                        onClick: refreshAll
-                    }, busy ? "…" : "↻"))
+                    react.createElement("span", { className: "dsh-uak-accountText" }, `${view.vendorName} · DeepSeek 账户`))
             );
         }
         //#endregion
 
         //#region client/quota-settings.js
-// Subscription authentication: one compact row per vendor, inline auth
-        // panels, drag ordering, and Host-owned secrets. No third-level page.
+// Subscription authentication, account summaries, and visible/hidden vendor management.
         const TERMINAL_AUTH_PHASES = new Set(["authenticated", "failed", "cancelled", "expired"]);
         const SUBSCRIPTION_ORDER_KEY = "utility-appearance-kit:subscription-order";
         const SUBSCRIPTION_HIDDEN_KEY = "utility-appearance-kit:subscription-hidden";
@@ -1147,6 +1235,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             }
         }
 
+        function knownVendorIds(ids) {
+            const known = new Set(SUBSCRIPTION_VENDORS.map((vendor) => vendor.id));
+            return ids.filter((id) => known.has(id));
+        }
+
         function vendorOrder(hidden) {
             const known = new Set(SUBSCRIPTION_VENDORS.map((vendor) => vendor.id));
             const stored = readStoredList(SUBSCRIPTION_ORDER_KEY).filter((id) => known.has(id));
@@ -1178,87 +1271,150 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             }
         }
 
+        function quotaWindowLabel(row) {
+            const seconds = quotaWindowSeconds(row);
+            if (seconds === 5 * 3600) return "5小时额度窗口";
+            if (seconds === 7 * 86400) return "周额度窗口";
+            if (row?.window?.unit === "month" || seconds === 30 * 86400) return "月额度窗口";
+            if (seconds === 86400) return "日额度窗口";
+            return "额度窗口";
+        }
+
+        function nearestQuotaWindow(usage, now = Date.now()) {
+            const rows = [usage?.summary, ...Array.isArray(usage?.limits) ? usage.limits : []]
+                .filter((row) => row !== null && typeof row === "object" && Number.isFinite(Date.parse(row.resetAt)))
+                .filter((row) => Date.parse(row.resetAt) > now)
+                .sort((left, right) => Date.parse(left.resetAt) - Date.parse(right.resetAt));
+            return rows[0];
+        }
+
+        function formatSummaryReset(value) {
+            const time = Date.parse(value);
+            if (!Number.isFinite(time)) return "—";
+            const date = new Date(time);
+            const pad = (part) => String(part).padStart(2, "0");
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        }
+
+        function summaryPercent(row) {
+            const percent = remainingPercentOf(row);
+            return Number.isFinite(percent) ? `${Math.round(Math.max(0, Math.min(100, percent)))}%` : "—";
+        }
+
         const authCss = `
 .dsh-uak-auth { display:flex; flex-direction:column; gap:10px; max-width:760px; color:var(--dsw-alias-label-primary); }
 .dsh-uak-authHead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .dsh-uak-auth h2,.dsh-uak-auth p { margin:0; }
 .dsh-uak-auth h2 { font-size:16px; line-height:24px; font-weight:500; }
 .dsh-uak-authHint { color:var(--dsw-alias-label-tertiary); font-size:12px; line-height:17px; }
+.dsh-uak-nativeGuide { padding:8px 10px; border:1px solid var(--dsw-alias-border-l2); border-radius:8px; background:var(--dsw-alias-bg-layer-1,transparent); color:var(--dsw-alias-label-secondary); font-size:12px; line-height:17px; }
 .dsh-uak-authList { display:flex; flex-direction:column; overflow:hidden; border-radius:10px; background:var(--dsw-alias-bg-layer-1,transparent); }
-.dsh-uak-vendorRow { display:flex; align-items:center; gap:9px; min-height:38px; padding:6px 12px; border-top:1px solid var(--dsw-alias-border-l2); }
+.dsh-uak-manageSection { display:flex; flex-direction:column; gap:5px; }
+.dsh-uak-manageTitle { margin:4px 2px 0; color:var(--dsw-alias-label-secondary); font-size:12px; font-weight:600; }
+.dsh-uak-manageDrop { min-height:42px; border:1px dashed var(--dsw-alias-border-l2); border-radius:8px; }
+.dsh-uak-manageDrop .dsh-uak-authList { border:0; }
+.dsh-uak-vendorRow { display:flex; align-items:center; gap:9px; min-height:38px; padding:6px 12px; border-top:1px solid var(--dsw-alias-border-l2); cursor:pointer; }
 .dsh-uak-vendorRow:first-child { border-top:0; }
-.dsh-uak-vendorRow[data-managing=true] { background:var(--dsw-alias-bg-sunken,transparent); }
-.dsh-uak-vendorName { display:flex; min-width:0; flex:1; align-items:center; gap:8px; font-size:13px; line-height:18px; }
-.dsh-uak-vendorPlan { overflow:hidden; color:var(--dsw-alias-label-caption); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.dsh-uak-vendorRow[data-managing=true] { background:var(--dsw-alias-bg-sunken,transparent); cursor:default; }
+.dsh-uak-vendorName { min-width:0; flex:1; overflow:hidden; font-size:13px; line-height:18px; text-overflow:ellipsis; white-space:nowrap; }
 .dsh-uak-vendorHandle { flex:none; width:20px; height:24px; padding:0; border:0; background:transparent; color:var(--dsw-alias-label-caption); cursor:grab; user-select:none; }
 .dsh-uak-vendorHandle:active { cursor:grabbing; }
-.dsh-uak-vendorDot { width:7px; height:7px; flex:none; border-radius:50%; background:var(--dsw-alias-label-dimmed); }
-.dsh-uak-vendorDot[data-state=connected] { background:#2fa24c; }
-.dsh-uak-vendorDot[data-state=pending] { background:#e8a33d; }
-.dsh-uak-vendorDot[data-state=error] { background:#e0433f; }
+.dsh-uak-vendorDot,.dsh-uak-summaryDot { width:7px; height:7px; flex:none; border-radius:50%; background:#e0433f; }
+.dsh-uak-vendorDot[data-state=connected],.dsh-uak-summaryDot[data-state=connected] { background:#2fa24c; }
+.dsh-uak-vendorStatus { color:#e0433f; }
+.dsh-uak-vendorStatus[data-state=connected] { color:#2fa24c; }
 .dsh-uak-authButton { flex:none; padding:3px 10px; border:1px solid var(--dsw-alias-border-l2); border-radius:6px; background:transparent; color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; line-height:18px; cursor:pointer; white-space:nowrap; }
 .dsh-uak-authButton[data-primary=true] { border-color:var(--dsw-alias-state-business-primary); background:var(--dsw-alias-state-business-primary); color:var(--dsw-alias-on-business-primary,#fff); }
 .dsh-uak-authButton[data-active=true] { border-color:var(--dsw-alias-state-business-primary); }
 .dsh-uak-authButton:disabled { cursor:default; opacity:.55; }
-.dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:8px; padding:8px 12px 12px; border-top:1px solid var(--dsw-alias-border-l2); background:var(--dsw-alias-bg-sunken,transparent); }
+.dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:9px; padding:10px 12px 12px; border-top:1px solid var(--dsw-alias-border-l2); background:var(--dsw-alias-bg-sunken,transparent); }
+.dsh-uak-summaryAccount { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; font-size:13px; font-weight:600; }
+.dsh-uak-summaryAccount span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dsh-uak-summaryPlan { color:var(--dsw-alias-label-secondary); font-size:12px; }
+.dsh-uak-summaryQuota { display:grid; grid-template-columns:minmax(110px,auto) 1fr auto; align-items:center; gap:10px; font-size:12px; }
+.dsh-uak-summaryQuota time { color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
+.dsh-uak-summaryPercent { justify-self:end; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-keyTitle { display:flex; align-items:center; justify-content:space-between; min-height:24px; font-size:12px; font-weight:600; }
+.dsh-uak-eyeButton { width:28px; height:24px; padding:0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; }
+.dsh-uak-keyLine { display:flex; align-items:center; gap:7px; }
+.dsh-uak-keyLine .dsh-uak-authInput { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+.dsh-uak-groupTabs { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .dsh-uak-authForm { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .dsh-uak-authInput { box-sizing:border-box; min-width:0; flex:1; padding:5px 9px; border:1px solid var(--dsw-alias-border-l2); border-radius:6px; background:var(--dsw-alias-bg-sunken,transparent); color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; }
 .dsh-uak-authArea { min-height:64px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-authCode { font:600 15px/20px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
 .dsh-uak-authError { color:#e0433f; font-size:12px; line-height:17px; }
-.dsh-uak-authSuccess { color:#2fa24c; font-size:12px; line-height:17px; }
 .dsh-uak-authEmpty { padding:12px; color:var(--dsw-alias-label-tertiary); font-size:12px; }
 `;
 
         function VendorRow(props) {
-            const { vendor, account, active, busy, error, managing, onToggle, onToggleApi, onDragStart, onDrop, onDragEnd, onDelete } = props;
+            const { vendor, account, active, busy, managing, onToggle, onToggleApi, onHover,
+                onDragStart, onDrop, onDragEnd } = props;
             const verified = account?.verified === true;
-            const configured = account?.configured === true;
-            const state = account === undefined ? "loading" : account?.error ? "error" : verified ? "connected" : configured ? "pending" : "disconnected";
             return react.createElement("div", {
                 className: "dsh-uak-vendorRow",
                 "data-vendor": vendor.id,
                 "data-managing": managing ? "true" : "false",
+                role: managing ? undefined : "button",
+                tabIndex: managing ? undefined : 0,
+                "aria-expanded": managing ? undefined : active,
+                onMouseEnter: managing ? undefined : () => onHover(vendor.id),
+                onClick: managing ? undefined : () => onToggle(vendor.id),
+                onKeyDown: managing ? undefined : (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onToggle(vendor.id);
+                    }
+                },
                 onDragOver: managing ? (event) => event.preventDefault() : undefined,
                 onDrop: managing ? (event) => onDrop(event, vendor.id) : undefined
             },
             managing ? react.createElement("button", {
-                type: "button", className: "dsh-uak-vendorHandle", title: "拖动排序",
-                "aria-label": `拖动 ${vendor.name} 排序`, draggable: true,
+                type: "button", className: "dsh-uak-vendorHandle",
+                "aria-label": `拖动 ${vendor.name}`, draggable: true,
                 onDragStart: (event) => onDragStart(event, vendor.id), onDragEnd
             }, "☰") : null,
-            react.createElement("span", { className: "dsh-uak-vendorDot", "data-state": state, "aria-hidden": true }),
-            react.createElement("span", { className: "dsh-uak-vendorName" },
-                vendor.name,
-                react.createElement("span", { className: "dsh-uak-vendorPlan" }, vendor.plan)),
+            react.createElement("span", {
+                className: "dsh-uak-vendorDot",
+                "data-state": verified ? "connected" : "error",
+                "aria-hidden": true
+            }),
+            react.createElement("span", { className: "dsh-uak-vendorName" }, vendor.name),
             !managing && vendorApiManageable(vendor) ? react.createElement("button", {
-                type: "button", className: "dsh-uak-authButton", title: "Host 保存的 API 管理",
+                type: "button", className: "dsh-uak-authButton",
                 "data-active": account?.apiConfigured === true,
-                onClick: () => onToggleApi(vendor.id)
+                onClick: (event) => { event.stopPropagation(); onToggleApi(vendor.id); }
             }, "API") : null,
-            managing ? react.createElement("button", {
-                type: "button", className: "dsh-uak-authButton", title: "删除",
-                "aria-label": `删除 ${vendor.name}`, onClick: () => onDelete(vendor.id)
-            }, "删除") : null,
             !managing ? react.createElement("button", {
-                type: "button", className: "dsh-uak-authButton", "data-primary": !verified,
-                "data-active": active, disabled: busy, onClick: () => onToggle(vendor.id)
-            }, busy ? "处理中…" : verified ? "已验证" : configured ? "待验证" : "认证") : null,
-            error === undefined ? null : react.createElement("span", { className: "dsh-uak-authError", role: "alert" }, error));
+                type: "button", className: "dsh-uak-authButton dsh-uak-vendorStatus",
+                "data-state": verified ? "connected" : "error",
+                "data-active": active, disabled: busy,
+                onClick: (event) => { event.stopPropagation(); onToggle(vendor.id); }
+            }, busy ? "处理中…" : verified ? "已验证" : "未验证") : null);
         }
 
         function SubscriptionAuthSettings({ rpc }) {
             const [order, setOrder] = react.useState(() => vendorOrder(readStoredList(SUBSCRIPTION_HIDDEN_KEY)));
+            const [hidden, setHidden] = react.useState(() => knownVendorIds(readStoredList(SUBSCRIPTION_HIDDEN_KEY)));
+            const [draftOrder, setDraftOrder] = react.useState([]);
+            const [draftHidden, setDraftHidden] = react.useState([]);
             const [managing, setManaging] = react.useState(false);
             const [expanded, setExpanded] = react.useState(undefined);
+            const [pinned, setPinned] = react.useState(undefined);
             const [accounts, setAccounts] = react.useState({});
+            const [summaries, setSummaries] = react.useState({});
+            const [apiKeys, setApiKeys] = react.useState({});
+            const [visibleKey, setVisibleKey] = react.useState(undefined);
+            const [copiedKey, setCopiedKey] = react.useState(undefined);
             const [flow, setFlow] = react.useState(undefined);
             const [secret, setSecret] = react.useState("");
             const [busyVendor, setBusyVendor] = react.useState(undefined);
             const [error, setError] = react.useState(undefined);
             const [apiForm, setApiForm] = react.useState(undefined);
             const generation = react.useRef(0);
+            const summaryGeneration = react.useRef(0);
             const dragId = react.useRef(undefined);
+            const hoverTimer = react.useRef(undefined);
             const activeSignature = react.useRef("");
 
             const call = react.useCallback((endpoint, payload = {}) => {
@@ -1270,7 +1426,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 
             const loadAll = react.useCallback(() => {
                 const current = ++generation.current;
-                call("auth/status").then((next) => {
+                return call("auth/status").then((next) => {
                     if (generation.current !== current) return;
                     setAccounts(next?.vendors ?? {});
                 }).catch((cause) => {
@@ -1281,12 +1437,10 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             }, [call]);
 
             react.useEffect(() => {
-                loadAll();
+                void loadAll();
                 return () => { generation.current += 1; };
             }, [loadAll]);
 
-            // Migrate the old browser-local API settings into Host credentials,
-            // then remove the plaintext copy. No legacy key is returned to UI.
             react.useEffect(() => {
                 for (const vendor of SUBSCRIPTION_VENDORS) {
                     if (!vendorApiManageable(vendor)) continue;
@@ -1313,8 +1467,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 window.dispatchEvent(new Event(KIMI_AUTH_EVENT));
             }, [accounts, order]);
 
-            // One-shot polling keeps the latest server interval and merges DTOs,
-            // so pending never drops vendor/deviceCode and expired always stops.
             react.useEffect(() => {
                 if (flow === undefined || TERMINAL_AUTH_PHASES.has(flow.phase)) return undefined;
                 let live = true;
@@ -1325,9 +1477,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         if (!live) return;
                         if (next?.phase === "authenticated") {
                             setFlow(undefined);
-                            setExpanded(undefined);
                             setBusyVendor(undefined);
-                            loadAll();
+                            await loadAll();
                             return;
                         }
                         if (next === undefined || TERMINAL_AUTH_PHASES.has(next.phase)) {
@@ -1350,12 +1501,56 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 };
             }, [flow?.id, call, loadAll]);
 
+            // Load summary and key only for the expanded local account card. The
+            // key stays in component memory and is never written to localStorage.
+            react.useEffect(() => {
+                const vendor = VENDOR_BY_ID.get(expanded);
+                if (managing || vendor === undefined || accounts[vendor.id]?.configured !== true) return undefined;
+                const current = ++summaryGeneration.current;
+                let disposed = false;
+                const load = async () => {
+                    let usage = summaries[vendor.id];
+                    if (usage === undefined) {
+                        try {
+                            usage = await call("usage", { vendor: vendor.id });
+                            if (disposed || current !== summaryGeneration.current) return;
+                            setSummaries((previous) => ({ ...previous, [vendor.id]: usage }));
+                        } catch (cause) {
+                            if (!disposed && current === summaryGeneration.current) {
+                                setSummaries((previous) => ({
+                                    ...previous,
+                                    [vendor.id]: { error: cause?.message ?? "额度信息不可用" }
+                                }));
+                            }
+                        }
+                    }
+                    const method = accounts[vendor.id]?.method;
+                    if ((method !== "api-key" && method !== "api-key-groups") || apiKeys[vendor.id] !== undefined) return;
+                    try {
+                        const group = vendor.id === "protocom"
+                            ? usage?.group ?? accounts[vendor.id]?.group
+                            : undefined;
+                        const value = await call("auth/api-key/get", { vendor: vendor.id, group });
+                        if (disposed || current !== summaryGeneration.current) return;
+                        setApiKeys((previous) => ({ ...previous, [vendor.id]: value?.apiKey ?? "" }));
+                    } catch {
+                        if (!disposed && current === summaryGeneration.current) {
+                            setApiKeys((previous) => ({ ...previous, [vendor.id]: "" }));
+                        }
+                    }
+                };
+                void load();
+                return () => { disposed = true; };
+            }, [expanded, managing, accounts, call]);
+
             const run = async (vendor, operation) => {
                 if (busyVendor !== undefined) return;
                 setBusyVendor(vendor.id);
                 setError(undefined);
                 try {
                     await operation();
+                    setSummaries((previous) => { const next = { ...previous }; delete next[vendor.id]; return next; });
+                    setApiKeys((previous) => { const next = { ...previous }; delete next[vendor.id]; return next; });
                     await loadAll();
                 } catch (cause) {
                     setError(cause?.message ?? `${vendor.name} 操作失败`);
@@ -1364,20 +1559,17 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 }
             };
 
-            const saveSecret = (vendor, kind, event) => {
+            const saveSecret = (vendor, kind, event, group) => {
                 event.preventDefault();
                 const value = secret.trim();
                 if (value.length === 0) return;
                 return run(vendor, async () => {
                     const status = kind === "api-key"
-                        ? await call("auth/api-key/set", { vendor: vendor.id, apiKey: value })
+                        ? await call("auth/api-key/set", { vendor: vendor.id, apiKey: value, group })
                         : await call("auth/token/set", { vendor: vendor.id, kind, token: value });
-                    if (status?.verified === true) {
-                        setSecret("");
-                        setExpanded(undefined);
-                    } else {
-                        setError(status?.error ?? "凭据已保存，但上游验证未通过，请检查后重试。");
-                    }
+                    if (status?.verified === true) setSecret("");
+                    else setError(status?.error ?? "凭据已保存，但上游验证未通过，请检查后重试。");
+                    // Saving never opens or closes the summary card by itself.
                 });
             };
 
@@ -1389,92 +1581,198 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             const cancelDevice = (vendor) => run(vendor, async () => {
                 if (flow?.id !== undefined) await call("auth/login/cancel", { id: flow.id, vendor: vendor.id });
                 setFlow(undefined);
-                setExpanded(undefined);
             });
+
+            const closePanel = () => {
+                setExpanded(undefined);
+                setPinned(undefined);
+                setVisibleKey(undefined);
+                setApiKeys({});
+            };
+
+            const toggleVendor = (id) => {
+                setSecret("");
+                setError(undefined);
+                setVisibleKey(undefined);
+                if (expanded === id && pinned === id) {
+                    closePanel();
+                    return;
+                }
+                setExpanded(id);
+                setPinned(id);
+                setApiForm(undefined);
+            };
+
+            const hoverVendor = (id) => {
+                if (managing || pinned !== undefined) return;
+                window.clearTimeout(hoverTimer.current);
+                hoverTimer.current = window.setTimeout(() => {
+                    setExpanded(id);
+                    setVisibleKey(undefined);
+                    setApiForm(undefined);
+                }, 120);
+            };
+
+            const leaveVendor = (id) => {
+                window.clearTimeout(hoverTimer.current);
+                if (pinned === undefined && expanded === id) closePanel();
+            };
 
             const toggleApi = (id) => {
                 if (expanded === `api:${id}`) {
-                    setExpanded(undefined);
+                    closePanel();
                     setApiForm(undefined);
                     return;
                 }
                 const current = accounts[id]?.apiConfig;
-                setApiForm({
-                    label: current?.label ?? "",
-                    endpoint: current?.endpoint ?? "",
-                    apiKey: ""
-                });
+                setApiForm({ label: current?.label ?? "", endpoint: current?.endpoint ?? "", apiKey: "" });
                 setExpanded(`api:${id}`);
+                setPinned(id);
                 setError(undefined);
             };
 
-            const persistOrder = (next) => {
-                setOrder(next);
-                writeStoredList(SUBSCRIPTION_ORDER_KEY, next);
+            const startManaging = () => {
+                const visible = vendorOrder(hidden);
+                const storedHidden = knownVendorIds(readStoredList(SUBSCRIPTION_HIDDEN_KEY));
+                setDraftOrder(visible);
+                setDraftHidden(storedHidden.filter((id) => !visible.includes(id)));
+                setManaging(true);
+                closePanel();
+                setError(undefined);
             };
 
-            const removeVendor = (id) => {
-                writeStoredList(SUBSCRIPTION_HIDDEN_KEY, [...readStoredList(SUBSCRIPTION_HIDDEN_KEY), id]);
-                if (readActiveVendor() === id) writeActiveVendor(undefined);
-                persistOrder(order.filter((item) => item !== id));
-                if (expanded === id || expanded === `api:${id}`) setExpanded(undefined);
+            const saveManaging = () => {
+                writeStoredList(SUBSCRIPTION_ORDER_KEY, draftOrder);
+                writeStoredList(SUBSCRIPTION_HIDDEN_KEY, draftHidden);
+                setOrder(draftOrder);
+                setHidden(draftHidden);
+                setManaging(false);
+                if (draftHidden.includes(readActiveVendor())) writeActiveVendor(undefined);
             };
 
             const restoreDefaults = () => {
-                writeStoredList(SUBSCRIPTION_HIDDEN_KEY, []);
-                writeStoredList(SUBSCRIPTION_ORDER_KEY, []);
-                writeActiveVendor(undefined);
-                activeSignature.current = "";
-                setOrder(SUBSCRIPTION_VENDORS.map((vendor) => vendor.id));
-                setExpanded(undefined);
+                setDraftOrder(SUBSCRIPTION_VENDORS.map((vendor) => vendor.id));
+                setDraftHidden([]);
             };
 
-            const statusText = (vendor) => {
-                const account = accounts[vendor.id];
-                if (account?.verified) return `${account.verification === "api" ? "API 已验证（订阅额度未提供）" : "已验证"}${account.plan ? ` · ${account.plan}` : ""}${account.source === "cli" ? " · 官方 CLI" : ""}`;
-                if (account?.needsReconnect) return "旧版凭据需要重新认证";
-                if (account?.configured) return `已配置，未验证${account.error ? ` · ${account.error}` : ""}`;
-                return "未配置";
+            const moveDraftVendor = (from, target, section) => {
+                if (from === undefined || from === target) return;
+                const source = draftOrder.includes(from) ? "visible" : "hidden";
+                const sourceList = source === "visible" ? draftOrder : draftHidden;
+                const targetList = section === "visible" ? draftOrder : draftHidden;
+                const nextSource = sourceList.filter((id) => id !== from);
+                const nextTarget = (source === section ? nextSource : targetList.filter((id) => id !== from));
+                const index = target === undefined ? nextTarget.length : Math.max(0, nextTarget.indexOf(target));
+                nextTarget.splice(index < 0 ? nextTarget.length : index, 0, from);
+                if (section === "visible") setDraftOrder(nextTarget);
+                else setDraftHidden(nextTarget);
+                if (source !== section) {
+                    if (source === "visible") setDraftOrder(nextSource);
+                    else setDraftHidden(nextSource);
+                }
             };
 
-            const secretPanel = (vendor, kind) => {
+            const secretPanel = (vendor, kind, group) => {
                 const isArea = kind === "oauth" || kind === "cookie";
                 const placeholder = kind === "oauth"
                     ? `粘贴 ${vendor.name} OAuth JSON 或 access token`
                     : kind === "cookie" ? "粘贴完整 Cookie" : `粘贴 ${vendor.name} ${kind === "session" ? "会话 Token" : "订阅 API Key"}`;
-                return react.createElement("form", { className: "dsh-uak-authForm", onSubmit: (event) => saveSecret(vendor, kind, event) },
-                    isArea ? react.createElement("textarea", {
-                        className: "dsh-uak-authInput dsh-uak-authArea", value: secret,
-                        placeholder, "aria-label": placeholder,
-                        onChange: (event) => setSecret(event.currentTarget.value)
-                    }) : react.createElement("input", {
-                        className: "dsh-uak-authInput", type: "password", value: secret,
-                        autoComplete: "off", spellCheck: false, placeholder, "aria-label": placeholder,
-                        onChange: (event) => setSecret(event.currentTarget.value)
-                    }),
-                    react.createElement("button", {
-                        type: "submit", className: "dsh-uak-authButton", "data-primary": "true",
-                        disabled: busyVendor !== undefined || secret.trim().length === 0
-                    }, busyVendor === vendor.id ? "验证中…" : "保存并验证"));
+                return react.createElement("form", {
+                    className: "dsh-uak-authForm",
+                    onSubmit: (event) => saveSecret(vendor, kind, event, group)
+                },
+                isArea ? react.createElement("textarea", {
+                    className: "dsh-uak-authInput dsh-uak-authArea", value: secret,
+                    placeholder, "aria-label": placeholder,
+                    onChange: (event) => setSecret(event.currentTarget.value)
+                }) : react.createElement("input", {
+                    className: "dsh-uak-authInput", type: "password", value: secret,
+                    autoComplete: "off", spellCheck: false, placeholder, "aria-label": placeholder,
+                    onChange: (event) => setSecret(event.currentTarget.value)
+                }),
+                react.createElement("button", {
+                    type: "submit", className: "dsh-uak-authButton", "data-primary": "true",
+                    disabled: busyVendor !== undefined || secret.trim().length === 0
+                }, busyVendor === vendor.id ? "验证中…" : "保存并验证"));
+            };
+
+            const copyApiKey = async (vendor) => {
+                const key = apiKeys[vendor.id];
+                if (!key) return;
+                try {
+                    await navigator.clipboard.writeText(key);
+                    setCopiedKey(vendor.id);
+                    window.setTimeout(() => setCopiedKey((current) => current === vendor.id ? undefined : current), 1200);
+                } catch {
+                    setError("复制失败，请检查浏览器剪贴板权限");
+                }
+            };
+
+            const keySection = (vendor) => {
+                const account = accounts[vendor.id];
+                if (account?.configured !== true || !["api-key", "api-key-groups"].includes(account?.method)) return null;
+                const key = apiKeys[vendor.id] ?? "";
+                const visible = visibleKey === vendor.id;
+                return react.createElement(react.Fragment, null,
+                    react.createElement("div", { className: "dsh-uak-keyTitle" },
+                        react.createElement("span", null, "API Key"),
+                        react.createElement("button", {
+                            type: "button", className: "dsh-uak-eyeButton",
+                            "aria-label": visible ? "隐藏 API Key" : "显示 API Key",
+                            disabled: !key,
+                            onClick: () => setVisibleKey(visible ? undefined : vendor.id)
+                        }, "👁")),
+                    react.createElement("div", { className: "dsh-uak-keyLine" },
+                        react.createElement("input", {
+                            className: "dsh-uak-authInput", readOnly: true, tabIndex: 0,
+                            "aria-label": `${vendor.name} API Key`,
+                            value: visible ? key : "*".repeat(key.length),
+                            placeholder: key ? undefined : "读取中或不可用"
+                        }),
+                        react.createElement("button", {
+                            type: "button", className: "dsh-uak-authButton", disabled: !key,
+                            onClick: () => copyApiKey(vendor)
+                        }, copiedKey === vendor.id ? "已复制" : "复制")));
             };
 
             const panel = (vendor) => {
                 const account = accounts[vendor.id];
+                const summary = summaries[vendor.id];
+                const usage = summary?.usage;
+                const row = nearestQuotaWindow(usage);
+                const group = vendor.groups?.find((entry) => entry.id === summary?.group)
+                    ?? vendor.groups?.find((entry) => entry.id === account?.group);
+                const plan = usage?.plan ?? account?.plan ?? group?.plan ?? vendor.plan;
                 const loginUrl = safeVendorLoginUrl(flow?.deviceCode?.verificationUri, vendor);
                 const isFlow = flow?.vendor === vendor.id && !TERMINAL_AUTH_PHASES.has(flow.phase);
                 return react.createElement("div", { className: "dsh-uak-vendorPanel", key: `auth:${vendor.id}` },
-                    react.createElement("p", { className: account?.verified ? "dsh-uak-authSuccess" : "dsh-uak-authHint" }, statusText(vendor)),
+                    react.createElement("div", { className: "dsh-uak-summaryAccount" },
+                        react.createElement("span", null, usage?.accountName ?? "账户名称---"),
+                        react.createElement("span", {
+                            className: "dsh-uak-summaryDot",
+                            "data-state": account?.verified ? "connected" : "error",
+                            "aria-label": account?.verified ? "已验证" : "未验证"
+                        })),
+                    react.createElement("div", { className: "dsh-uak-summaryPlan" }, `套餐：${plan ?? "—"}`),
+                    react.createElement("div", { className: "dsh-uak-summaryQuota" },
+                        react.createElement("span", null, quotaWindowLabel(row)),
+                        react.createElement("time", { dateTime: row?.resetAt }, formatSummaryReset(row?.resetAt)),
+                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row))),
+                    keySection(vendor),
                     react.createElement("p", { className: "dsh-uak-authHint" }, vendor.authHint),
+                    vendor.groups ? react.createElement("div", { className: "dsh-uak-groupTabs" },
+                        vendor.groups.map((entry) => react.createElement("span", { className: "dsh-uak-authHint", key: entry.id },
+                            `${entry.name}${account?.groups?.[entry.id]?.verified ? " · 已验证" : account?.groups?.[entry.id]?.configured ? " · 未验证" : " · 未配置"}`))) : null,
                     account?.configured ? react.createElement("div", { className: "dsh-uak-authForm" },
                         react.createElement("button", {
                             type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, () => call("auth/validate", { vendor: vendor.id }))
+                            onClick: () => run(vendor, () => call("auth/validate", { vendor: vendor.id, group: group?.id }))
                         }, "重新验证"),
                         react.createElement("button", {
                             type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
                             onClick: () => run(vendor, async () => {
                                 await call("auth/logout", { vendor: vendor.id });
-                                setExpanded(undefined);
+                                closePanel();
                             })
                         }, "删除凭据")) : null,
                     vendor.cli ? react.createElement("div", { className: "dsh-uak-authForm" },
@@ -1496,10 +1794,14 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     vendorSupports(vendor, "oauth") ? secretPanel(vendor, "oauth") : null,
                     vendorSupports(vendor, "session") ? secretPanel(vendor, "session") : null,
                     vendorSupports(vendor, "cookie") ? secretPanel(vendor, "cookie") : null,
-                    vendorSupports(vendor, "api-key") ? secretPanel(vendor, "api-key") : null,
+                    vendorSupports(vendor, "api-key") && !vendor.groups ? secretPanel(vendor, "api-key") : null,
+                    vendor.groups ? vendor.groups.map((entry) => react.createElement("div", { key: `save:${entry.id}` },
+                        react.createElement("p", { className: "dsh-uak-authHint" }, `${entry.name} API Key`),
+                        secretPanel(vendor, "api-key", entry.id))) : null,
                     safeVendorLoginUrl(vendor.consoleUrl, vendor) ? react.createElement("a", {
                         href: safeVendorLoginUrl(vendor.consoleUrl, vendor), target: "_blank", rel: "noreferrer"
                     }, "打开官方控制台") : null,
+                    summary?.error ? react.createElement("p", { className: "dsh-uak-authError" }, summary.error) : null,
                     error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError", role: "alert" }, error));
             };
 
@@ -1515,12 +1817,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         react.createElement("input", { className: "dsh-uak-authInput", type: "password", value: form.apiKey, autoComplete: "off", placeholder: accounts[vendor.id]?.apiConfigured ? "留空保留已有 Key" : "API Key", "aria-label": `${vendor.name} API Key`, onChange: (event) => update({ apiKey: event.currentTarget.value }) })),
                     react.createElement("div", { className: "dsh-uak-authForm" },
                         react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", "data-primary": "true",
-                            disabled: busyVendor !== undefined,
+                            type: "button", className: "dsh-uak-authButton", "data-primary": "true", disabled: busyVendor !== undefined,
                             onClick: () => run(vendor, async () => {
                                 await call("auth/api-config/set", { vendor: vendor.id, ...form });
                                 setApiForm(undefined);
-                                setExpanded(undefined);
+                                closePanel();
                             })
                         }, "保存"),
                         accounts[vendor.id]?.apiConfigured ? react.createElement("button", {
@@ -1528,26 +1829,27 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                             onClick: () => run(vendor, async () => {
                                 await call("auth/api-config/delete", { vendor: vendor.id });
                                 setApiForm(undefined);
-                                setExpanded(undefined);
+                                closePanel();
                             })
                         }, "删除") : null,
-                        react.createElement("button", { type: "button", className: "dsh-uak-authButton", onClick: () => { setApiForm(undefined); setExpanded(undefined); } }, "取消")),
-                    error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError", role: "alert" }, error));
+                        react.createElement("button", { type: "button", className: "dsh-uak-authButton", onClick: () => { setApiForm(undefined); closePanel(); } }, "取消")),
+                    error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError" }, error));
             };
 
-            const rows = [];
-            for (const id of order) {
+            const renderVendor = (id, isManaging, section) => {
                 const vendor = VENDOR_BY_ID.get(id);
-                if (vendor === undefined) continue;
-                rows.push(react.createElement(VendorRow, {
-                    key: id, vendor, account: accounts[id], active: expanded === id,
-                    busy: busyVendor === id, error: undefined, managing,
-                    onToggle: (vendorId) => {
-                        setSecret("");
-                        setError(undefined);
-                        setExpanded(expanded === vendorId ? undefined : vendorId);
-                    },
+                if (vendor === undefined) return null;
+                const active = expanded === id;
+                return react.createElement("div", {
+                    key: `${section}:${id}`,
+                    onMouseLeave: isManaging ? undefined : () => leaveVendor(id)
+                },
+                react.createElement(VendorRow, {
+                    vendor, account: accounts[id], active,
+                    busy: busyVendor === id, managing: isManaging,
+                    onToggle: toggleVendor,
                     onToggleApi: toggleApi,
+                    onHover: hoverVendor,
                     onDragStart: (event, vendorId) => {
                         dragId.current = vendorId;
                         event.dataTransfer?.setData("text/plain", vendorId);
@@ -1555,34 +1857,53 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     },
                     onDrop: (event, vendorId) => {
                         event.preventDefault();
-                        if (dragId.current !== undefined && dragId.current !== vendorId) {
-                            persistOrder(reorderVendor(order, dragId.current, vendorId));
-                        }
+                        event.stopPropagation();
+                        moveDraftVendor(dragId.current, vendorId, section);
                         dragId.current = undefined;
                     },
-                    onDragEnd: () => { dragId.current = undefined; },
-                    onDelete: removeVendor
-                }));
-                if (!managing && expanded === id) rows.push(panel(vendor));
-                if (!managing && expanded === `api:${id}` && apiForm !== undefined) rows.push(apiPanel(vendor));
-            }
+                    onDragEnd: () => { dragId.current = undefined; }
+                }),
+                !isManaging && active ? panel(vendor) : null,
+                !isManaging && expanded === `api:${id}` && apiForm !== undefined ? apiPanel(vendor) : null);
+            };
+
+            const manageList = (ids, section) => react.createElement("div", {
+                className: "dsh-uak-manageDrop",
+                onDragOver: (event) => event.preventDefault(),
+                onDrop: (event) => {
+                    event.preventDefault();
+                    moveDraftVendor(dragId.current, undefined, section);
+                    dragId.current = undefined;
+                }
+            }, ids.length > 0
+                ? react.createElement("div", { className: "dsh-uak-authList" }, ids.map((id) => renderVendor(id, true, section)))
+                : react.createElement("div", { className: "dsh-uak-authEmpty" }, "拖动厂商到这里"));
 
             return react.createElement("section", { className: "dsh-uak-auth", "data-dsh-plugin": name },
+                react.createElement("div", { className: "dsh-uak-nativeGuide" },
+                    "认证完成后会自动配置文本/图片输入、模型思考档位和默认 1M 上下文。可前往 DSH 设置 → 模型，在原生模型设置中进一步个性化。"),
                 react.createElement("div", { className: "dsh-uak-authHead" },
                     react.createElement("h2", null, "订阅认证"),
                     react.createElement("div", { className: "dsh-uak-authForm" },
                         managing ? react.createElement("button", { type: "button", className: "dsh-uak-authButton", onClick: restoreDefaults }, "恢复默认") : null,
                         react.createElement("button", {
                             type: "button", className: "dsh-uak-authButton", "data-active": managing,
-                            onClick: () => { setManaging(!managing); setExpanded(undefined); setError(undefined); }
-                        }, managing ? "完成" : "管理"))),
+                            onClick: managing ? saveManaging : startManaging
+                        }, managing ? "保存" : "管理"))),
                 react.createElement("p", { className: "dsh-uak-authHint" },
-                    "一行一个厂商，认证在当前行展开。只有真实接口验证成功才显示“已验证”；密钥、Cookie 与 OAuth Token 均由 Host 保存。"),
-                managing ? react.createElement("p", { className: "dsh-uak-authHint" }, "按住 ☰ 把手拖动排序，行末可删除厂商。") : null,
-                rows.length > 0
-                    ? react.createElement("div", { className: "dsh-uak-authList" }, rows)
-                    : react.createElement("div", { className: "dsh-uak-authEmpty" }, "厂商已全部移除，点击上方“恢复默认”还原。")
-            );
+                    "模型、图片、上下文与思考强度请在 DSH 原生模型设置中管理。厂商凭据与账户摘要在此展开。"),
+                managing
+                    ? react.createElement(react.Fragment, null,
+                        react.createElement("p", { className: "dsh-uak-authHint" }, "在显示和隐藏栏目之间拖动厂商，点击保存后应用。"),
+                        react.createElement("div", { className: "dsh-uak-manageSection" },
+                            react.createElement("div", { className: "dsh-uak-manageTitle" }, "显示"),
+                            manageList(draftOrder, "visible")),
+                        react.createElement("div", { className: "dsh-uak-manageSection" },
+                            react.createElement("div", { className: "dsh-uak-manageTitle" }, "隐藏"),
+                            manageList(draftHidden, "hidden")))
+                    : order.length > 0
+                        ? react.createElement("div", { className: "dsh-uak-authList" }, order.map((id) => renderVendor(id, false, "visible")))
+                        : react.createElement("div", { className: "dsh-uak-authEmpty" }, "所有厂商均已隐藏，点击“管理”恢复显示。"));
         }
         //#endregion
 

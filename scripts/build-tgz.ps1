@@ -1,15 +1,14 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-  把 utility-appearance-kit 打成可安装进 DSH profile 的 tgz。
+  把 dsh-Subscription-Management 打成可安装进 DSH profile 的 tgz。
 
 .DESCRIPTION
   profile 会用 pnpm 的 lockfile 钉住 tgz 的 sha512，所以重新打包时版本号必须变，
   否则同名同版本的 tarball 不会被重新解包。默认 -Bump 只升 patch；破坏性变更请先
   手工改 package.json 的版本号。
 
-  产物默认写到仓库**外面**的稳定目录（..\utility-appearance-kit-安装包\），这样 git clean /
-  工作区整理不会连带删掉 profile 的安装来源。
+  产物默认写到仓库内的 dist\ 目录（已被 .gitignore 忽略），可用 -OutDir 覆盖。
 
 .EXAMPLE
   pwsh -File scripts/build-tgz.ps1
@@ -27,7 +26,7 @@ $manifest = Get-Content -Raw -Encoding utf8 $manifestPath | ConvertFrom-Json
 $slug = $manifest.name -replace '^@[^/]+/', ''
 
 if (-not $OutDir) {
-    $OutDir = Join-Path (Split-Path -Parent $repo) "$slug-安装包"
+    $OutDir = Join-Path $repo 'dist'
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 

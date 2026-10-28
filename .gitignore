@@ -4,14 +4,19 @@ node_modules/
 
 # 打包与构建产物
 dist/
+build/
+out/
 *.tgz
 *.zip
+*.tsbuildinfo
 
 # 临时文件与缓存
 tmp/
 .tmp/
 .cache/
 coverage/
+vendor/
+.pnpm-debug.log*
 
 # 日志
 *.log

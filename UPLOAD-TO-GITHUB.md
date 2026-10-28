@@ -9,10 +9,11 @@ node scripts/build-client.mjs --check
 node verify-host.cjs
 node verify-client.mjs
 node verify-subscriptions.mjs
+node verify-provider-runtime.mjs
 node verify-compat.mjs
 ```
 
-以上 4 个验证脚本全部通过后再上传。
+以上 5 个验证脚本全部通过后再上传。Host 与 provider runtime 的脚本需要能解析 `package.json` 中的依赖（在 DSH profile 内运行，或先安装依赖）；本仓库不包含 `node_modules`。
 
 ## 创建仓库
 
@@ -50,4 +51,4 @@ git push origin v1.0.0
 - `.env`、密钥、token、Cookie、OAuth 凭据文件
 - 本机绝对路径、个人 profile 数据和真实账户响应
 
-`.gitignore` 已覆盖常见产物。上传前仍应执行敏感词检查，并确认 `subscriptions.json`（如果本项目包含）与 `host/subscriptions/`（如果本项目包含）已提交。
+`.gitignore` 已覆盖常见产物。上传前仍应执行敏感词检查，并确认 `subscriptions.json`、`host/subscriptions/` 与 `host/provider-runtime/` 已提交。

@@ -110,12 +110,13 @@ function percentRow(name, window, remainingPercent, resetAt) {
     return makeRow({ name, window, used: 100 - bounded, limit: 100, remainingPercent: bounded, resetAt });
 }
 
-function result(options, { summary = null, limits = [], extraUsage = null, plan } = {}) {
+function result(options, { summary = null, limits = [], extraUsage = null, plan, accountName } = {}) {
     return {
         summary,
         limits: limits.filter(Boolean),
         extraUsage,
         ...(text(plan) ? { plan: text(plan) } : {}),
+        ...(text(accountName) ? { accountName: text(accountName) } : {}),
         fetchedAt: options.now
     };
 }
@@ -1276,6 +1277,10 @@ async function fetchGemini(vendor, credential, context) {
     return parseGeminiUsage(payload, { ...context, plan: metadata.plan });
 }
 
+async function fetchClinePass(vendor) {
+    throw fail(vendor, "UNSUPPORTED", "ClinePass 没有已确认的订阅额度或只读验证端点");
+}
+
 const FETCHERS = {
     kimi: fetchKimi,
     chatgpt: fetchCodex,
@@ -1288,7 +1293,8 @@ const FETCHERS = {
     cerebras: fetchCerebras,
     minimax: fetchMiniMax,
     trae: fetchTrae,
-    gemini: fetchGemini
+    gemini: fetchGemini,
+    clinepass: fetchClinePass
 };
 
 export async function fetchSubscriptionUsage(vendor, credential, { writeCredential, now } = {}) {

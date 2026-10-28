@@ -37,6 +37,13 @@
             const text = `${typeof model === "string" ? model : ""} ${typeof provider === "string" ? provider : ""}`
                 .toLowerCase();
             if (text.trim().length === 0) return undefined;
+            const route = typeof provider === "string" && provider.length > 0
+                ? provider.toLowerCase()
+                : text.trim().split(/\s+/)[0];
+            const exact = SUBSCRIPTION_VENDORS.find((vendor) =>
+                [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
+                    .some((alias) => route === String(alias).toLowerCase()));
+            if (exact !== undefined) return exact.id;
             const match = SUBSCRIPTION_VENDORS.find((vendor) =>
                 [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
                     .some((alias) => text.includes(String(alias).toLowerCase())));
@@ -44,10 +51,11 @@
         }
 
         /** Pure card projection, also used by regression tests. */
-        function balanceCardView(kimiState, deepState) {
+        function balanceCardView(kimiState, deepState, modelLabel) {
             const slots = quotaSlots(kimiState?.usage);
             const data = deepState?.data;
             const deepCurrency = data?.currency ?? DEEPSEEK_FALLBACK_CURRENCY;
+            const vendor = SUBSCRIPTION_VENDORS.find((item) => item.id === kimiState?.vendor);
             const vendorName = subscriptionVendorName(kimiState?.vendor);
             const balanceText = formatCurrencyAmount(data?.totalBalance, deepCurrency) ?? "—";
             const todayText = formatCurrencyAmount(
@@ -103,6 +111,8 @@
             }
             return {
                 vendorName,
+                modelName: typeof modelLabel === "string" && modelLabel.length > 0 ? modelLabel : "当前模型",
+                planName: kimiState?.usage?.plan ?? vendor?.plan ?? "订阅",
                 slots: views,
                 renderedSlots: renderedViews,
                 balanceText,
@@ -128,6 +138,29 @@
     color: var(--dsw-alias-label-secondary);
     font-size: 11px;
     line-height: 15px;
+}
+.dsh-uak-balanceContext {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.dsh-uak-balanceModel {
+    overflow: hidden;
+    color: var(--dsw-alias-label-primary);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dsh-uak-balancePlan {
+    overflow: hidden;
+    color: var(--dsw-alias-label-caption);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .dsh-uak-balanceRings {
     display: flex;
@@ -382,7 +415,6 @@
         function BalanceCard({ rpc, wide, useSessions }) {
             const [kimiState, refreshKimi] = useQuotaController(rpc, { autoStart: false });
             const [deepState, refreshDeep] = useDeepSeekController(rpc);
-            const view = balanceCardView(kimiState, deepState);
             const narrow = wide === false;
             const preferredVendor = react.useRef(undefined);
             const initialRequested = react.useRef(false);
@@ -396,6 +428,7 @@
             const sessionsHook = typeof useSessions === "function" ? useSessions : useNoSessions;
             const runningIds = sessionsHook(runningSessionIds);
             const modelLabel = sessionsHook(activeModelLabel);
+            const view = balanceCardView(kimiState, deepState, modelLabel);
             const previousRunning = react.useRef(runningIds);
             react.useEffect(() => {
                 const ended = endedRunningSessions(previousRunning.current, runningIds);
@@ -440,7 +473,6 @@
                         className: "dsh-uak-balanceCard dsh-uak-balanceNarrow",
                         role: "button",
                         tabIndex: 0,
-                        title: `${view.title}\n\n点击刷新`,
                         "aria-label": `${view.title}。点击刷新`,
                         "aria-busy": busy,
                         "data-dsh-plugin": name,
@@ -469,11 +501,22 @@
                 "section",
                 {
                     className: "dsh-uak-balanceCard",
-                    title: view.title,
-                    "aria-label": "今日消耗与剩余余额",
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": "今日消耗与剩余余额。点击刷新",
                     "aria-busy": busy,
-                    "data-dsh-plugin": name
+                    "data-dsh-plugin": name,
+                    onClick: refreshAll,
+                    onKeyDown: (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            refreshAll();
+                        }
+                    }
                 },
+                react.createElement("div", { className: "dsh-uak-balanceContext" },
+                    react.createElement("span", { className: "dsh-uak-balanceModel", title: view.modelName }, view.modelName),
+                    react.createElement("span", { className: "dsh-uak-balancePlan", title: view.planName }, view.planName)),
                 react.createElement("div", { className: "dsh-uak-balanceRings" },
                     view.slots.length === 0
                         ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
@@ -491,14 +534,6 @@
                         "data-state": view.accountState,
                         "aria-hidden": true
                     }),
-                    react.createElement("span", { className: "dsh-uak-accountText" }, `${view.vendorName} · DeepSeek 账户`),
-                    react.createElement("button", {
-                        type: "button",
-                        className: "dsh-uak-balanceRefresh",
-                        title: "刷新订阅额度与 DeepSeek 余额",
-                        "aria-label": "刷新订阅额度与 DeepSeek 余额",
-                        disabled: busy,
-                        onClick: refreshAll
-                    }, busy ? "…" : "↻"))
+                    react.createElement("span", { className: "dsh-uak-accountText" }, `${view.vendorName} · DeepSeek 账户`))
             );
         }

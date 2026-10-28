@@ -8,10 +8,11 @@
 - `host/subscriptions/credentials.js`：Host 凭据、CLI 只读链接、验证指纹。
 - `host/subscriptions/kimi-oauth.js`：Kimi 设备授权状态机。
 - `host/subscriptions/usage.js`：真实只读验证、OAuth 刷新与用量解析。
+- `host/provider-runtime/`：DSH 原生 provider 注册、模型发现、额度服务与遥测投影；`protocom-api.js` 为上游 vendored 文件，作者许可证见同目录 `PROTOCOM-LICENSE`。
 - `host/accounts.js`：DeepSeek 余额与今日账本。
 - `subscriptions.json`：厂商目录唯一事实源，不得另写一份厂商清单。
 
-`client.js` 由 `scripts/build-client.mjs` 生成，不要直接编辑。修改 `client/*.js` 后必须重新构建并运行 `--check`。
+`client.js` 由 `scripts/build-client.mjs` 生成，不要直接编辑。修改 `client/*.js` 后必须重新构建并运行 `--check`。修改 provider runtime 后运行 `node verify-provider-runtime.mjs`，它用 fixture 覆盖 provider 注册、模型发现、额度缓存与遥测投影。
 
 ## 不可破坏的约束
 

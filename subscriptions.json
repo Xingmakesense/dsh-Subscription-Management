@@ -147,5 +147,59 @@
     "consoleUrl": "https://www.trae.cn",
     "authHint": "登录 trae.cn 后，粘贴 API 仪表盘请求中的 Cookie。短期交换 Token 仅在 Host 内使用，不保存。",
     "modelAliases": ["trae", "traecn"]
+  },
+  {
+    "id": "protocom",
+    "name": "Protocom",
+    "plan": "Protocom 官方 API",
+    "methods": ["api-key"],
+    "usage": "protocom",
+    "api": "open",
+    "host": "protocom.org",
+    "consoleUrl": "https://relay.protocom.org",
+    "authHint": "分别填写需要启用的 Protocom 分组 API Key；模型、协议、图片和档位在 DSH 原生模型设置中管理。",
+    "modelAliases": ["protocom-aggregate", "protocom-codex", "protocom-stepfun", "protocom-grok"],
+    "groups": [
+      { "id": "aggregate", "name": "Aggregate", "plan": "Protocom Aggregate" },
+      { "id": "codex", "name": "Codex", "plan": "Protocom Codex" },
+      { "id": "stepfun", "name": "StepFun", "plan": "Protocom StepFun" },
+      { "id": "grok", "name": "Grok", "plan": "Protocom Grok" }
+    ]
+  },
+  {
+    "id": "opencode-go",
+    "name": "OpenCode Go",
+    "plan": "OpenCode Go 订阅",
+    "methods": ["api-key"],
+    "usage": "opencode-go",
+    "api": "open",
+    "host": "opencode.ai",
+    "consoleUrl": "https://opencode.ai/zen/go",
+    "authHint": "使用 OpenCode Go 订阅 API Key。模型与上下文档位在 DSH 原生模型设置中管理。",
+    "modelAliases": ["opencode-go-sub"]
+  },
+  {
+    "id": "commandcode",
+    "name": "Command Code",
+    "plan": "Command Code 订阅",
+    "methods": ["api-key"],
+    "usage": "commandcode",
+    "api": "open",
+    "host": "commandcode.ai",
+    "consoleUrl": "https://commandcode.ai",
+    "authHint": "使用 Command Code 订阅 API Key。套餐可用模型由厂商账户信息决定。",
+    "modelAliases": ["commandcode"]
+  },
+  {
+    "id": "clinepass",
+    "name": "ClinePass",
+    "plan": "ClinePass 订阅",
+    "methods": ["api-key"],
+    "usage": "clinepass",
+    "api": "open",
+    "host": "cline.bot",
+    "consoleUrl": "https://cline.bot",
+    "authHint": "使用 ClinePass 订阅 API Key。厂商没有已确认的余额或配额读取端点。",
+    "modelAliases": ["clinepass", "cline-pass"]
   }
 ]

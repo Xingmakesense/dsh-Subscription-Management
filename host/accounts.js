@@ -196,8 +196,8 @@ async function sharedDeepseekSnapshot(ctx, scope) {
     return pending;
 }
 
-export function createHandler(ctx, scope) {
-    const subscriptions = createSubscriptionHandler(scope);
+export function createHandler(ctx, scope, runtime) {
+    const subscriptions = createSubscriptionHandler(scope, runtime);
     return async (endpoint, payload) => {
         if (endpoint === "deepseek") return ok(await sharedDeepseekSnapshot(ctx, scope));
         return subscriptions(endpoint, payload);
@@ -241,7 +241,7 @@ export const accountTest = Object.freeze({
     ...subscriptionHandlerTest
 });
 
-export function installAccountData(ctx) {
+export function installAccountData(ctx, runtime) {
     try {
         ctx.inject(["webServer", "connection", "credentials", "loader"], (scope) => {
             try {
@@ -249,9 +249,11 @@ export function installAccountData(ctx) {
                     if (!bindConnectionWebServer(scope, scope.webServer)) {
                         throw new Error("Connection fiber could not bind webServer");
                     }
+                    const attached = runtime?.attach(scope);
+                    attached?.catch((error) => log(ctx, "warn", `provider runtime unavailable: ${error?.message ?? String(error)}`));
                     return scope.connection.rpc.handle(
                         ACCOUNT_CHANNEL,
-                        createHandler(ctx, scope),
+                        createHandler(ctx, scope, runtime),
                         { authority: "loopback" }
                     );
                 });

@@ -1,9 +1,10 @@
 import { installAccountData, accountTest } from "./host/accounts.js";
+import { installProviderRuntime } from "./host/provider-runtime/index.js";
 import { Config, normalizeOptions } from "./host/options.js";
 import { recordStatus } from "./host/status.js";
 
 export const name = "dsh-subscription-management";
-export const inject = [];
+export const inject = ["llm"];
 export { Config, normalizeOptions };
 
 export const __test = Object.freeze({
@@ -18,5 +19,6 @@ export function apply(ctx, config) {
         return;
     }
     recordStatus("plugin", { phase: "apply" });
-    installAccountData(ctx);
+    const runtime = installProviderRuntime(ctx, () => config ?? normalized.value);
+    installAccountData(ctx, runtime);
 }

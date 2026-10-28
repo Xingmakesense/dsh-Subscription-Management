@@ -4,9 +4,12 @@ import {
     credentialIsExpired,
     deleteApiConfig,
     linkVendorCli,
+    markGroupVerification,
     markVendorVerification,
+    readApiKeyCredential,
     resolveVendorCredential,
     saveApiConfig,
+    saveGroupCredential,
     saveManualCredential,
     clearVendorCredential,
     vendorAuthStatus,
@@ -31,24 +34,47 @@ function safeError(error) {
     return message.slice(0, 300);
 }
 
-async function validateResolved(scope, vendor, resolved) {
+async function validateResolved(scope, vendor, resolved, { group, runtime, force } = {}) {
     if (resolved === undefined) {
         return { configured: false, authenticated: false, verified: false, vendor: vendor.id };
     }
     if (resolved.needsReconnect === true || resolved.kind === "legacy") {
         throw new Error(`${vendor.name} 旧版凭据需要重新认证`);
     }
+    if (vendor.id === "protocom") {
+        const secret = resolved.kind === "api-key-groups"
+            ? resolved.secret?.[group]
+            : group === "aggregate" && resolved.kind === "api-key" ? resolved.secret : undefined;
+        if (typeof secret !== "string" || secret.length === 0) {
+            throw new Error(`Protocom 分组 ${group ?? "未指定"} 尚未配置 API Key`);
+        }
+        try {
+            const usage = await runtime.fetchUsage(vendor.id, group, force);
+            await markGroupVerification(scope, vendor, group, secret, {
+                success: true,
+                plan: usage.plan,
+                accountName: usage.accountName,
+                verification: usage.verification
+            });
+            return { configured: true, authenticated: true, verified: true, vendor: vendor.id, group, usage };
+        } catch (error) {
+            await markGroupVerification(scope, vendor, group, secret, { success: false, error: safeError(error) });
+            throw error;
+        }
+    }
     try {
         if (resolved.source === "cli" && credentialIsExpired(resolved)) {
             throw new Error(`${vendor.name} CLI 凭据已过期，请重新运行 ${vendor.cli?.command ?? "官方登录"}`);
         }
         let verifiedRecord = resolved;
-        const usage = await fetchSubscriptionUsage(vendor, resolved, {
-            writeCredential: (record) => {
-                verifiedRecord = record;
-                return writeVendorCredential(scope, vendor, record);
-            }
-        });
+        const usage = ["opencode-go", "commandcode"].includes(vendor.id)
+            ? await runtime.fetchUsage(vendor.id, group, force)
+            : await fetchSubscriptionUsage(vendor, resolved, {
+                writeCredential: (record) => {
+                    verifiedRecord = record;
+                    return writeVendorCredential(scope, vendor, record);
+                }
+            });
         await markVendorVerification(scope, vendor, verifiedRecord, {
             success: true,
             plan: usage.plan,
@@ -72,26 +98,29 @@ async function validateResolved(scope, vendor, resolved) {
 
 const validationInFlight = new Map();
 
-async function validateCurrent(scope, vendor) {
-    const existing = validationInFlight.get(vendor.id);
+async function validateCurrent(scope, vendor, group, runtime, force) {
+    const key = `${vendor.id}:${group ?? ""}`;
+    const existing = validationInFlight.get(key);
     if (existing !== undefined) return existing;
     const pending = withVendorLock(vendor, async () => {
         const resolved = await resolveVendorCredential(scope, vendor);
-        return validateResolved(scope, vendor, resolved);
+        return validateResolved(scope, vendor, resolved, { group, runtime, force });
     });
-    validationInFlight.set(vendor.id, pending);
+    validationInFlight.set(key, pending);
     try {
         return await pending;
     } finally {
-        if (validationInFlight.get(vendor.id) === pending) validationInFlight.delete(vendor.id);
+        if (validationInFlight.get(key) === pending) validationInFlight.delete(key);
     }
 }
 
-async function saveAndValidate(scope, vendor, credential) {
+async function saveAndValidate(scope, vendor, credential, group, runtime) {
     return withVendorLock(vendor, async () => {
-        await saveManualCredential(scope, vendor, credential);
+        if (group !== undefined) await saveGroupCredential(scope, vendor, group, credential);
+        else await saveManualCredential(scope, vendor, credential);
+        await runtime?.sync();
         try {
-            await validateResolved(scope, vendor, await resolveVendorCredential(scope, vendor));
+            await validateResolved(scope, vendor, await resolveVendorCredential(scope, vendor), { group, runtime });
         } catch {
             // The credential remains saved with a sanitized verification error.
         }
@@ -111,10 +140,11 @@ async function linkAndValidate(scope, vendor) {
     });
 }
 
-async function validateAndReport(scope, vendor) {
+async function validateAndReport(scope, vendor, group, runtime) {
     return withVendorLock(vendor, async () => {
+        await runtime?.sync();
         try {
-            await validateResolved(scope, vendor, await resolveVendorCredential(scope, vendor));
+            await validateResolved(scope, vendor, await resolveVendorCredential(scope, vendor), { group, runtime });
         } catch {
             // Return the per-vendor state; the row displays the verification error.
         }
@@ -147,7 +177,17 @@ function inputCredential(vendor, input) {
     throw new Error(`${vendor.name} 不支持手动凭据`);
 }
 
-export function createSubscriptionHandler(scope) {
+async function preferredProtocomGroup(scope, vendor, runtime, requested) {
+    if (vendor.groups?.some((entry) => entry.id === requested)) return requested;
+    const recent = runtime?.currentGroup(vendor.id);
+    if (vendor.groups?.some((entry) => entry.id === recent)) return recent;
+    const status = await vendorAuthStatus(scope, vendor, { includeApiConfig: false });
+    if (status.groups?.[status.group]?.configured) return status.group;
+    return vendor.groups?.find((entry) => status.groups?.[entry.id]?.configured)?.id
+        ?? vendor.groups?.[0]?.id;
+}
+
+export function createSubscriptionHandler(scope, runtime) {
     return async (endpoint, payload) => {
         try {
             const input = payload !== null && typeof payload === "object" ? payload : {};
@@ -155,7 +195,10 @@ export function createSubscriptionHandler(scope) {
                 const vendor = input.vendor === undefined
                     ? await automaticVendor(scope)
                     : requireSubscriptionVendor(input.vendor);
-                const result = await validateCurrent(scope, vendor);
+                const group = vendor.id === "protocom"
+                    ? await preferredProtocomGroup(scope, vendor, runtime, input.group)
+                    : undefined;
+                const result = await validateCurrent(scope, vendor, group, runtime, input.force === true);
                 return ok(result);
             }
             if (endpoint === "auth/status") {
@@ -168,8 +211,20 @@ export function createSubscriptionHandler(scope) {
             if (endpoint === "auth/api-key/set") {
                 const vendor = requireSubscriptionVendor(input.vendor);
                 if (!vendorSupports(vendor, "api-key")) throw new Error(`${vendor.name} 不支持订阅 API Key`);
-                return ok(await saveAndValidate(scope, vendor,
-                    credentialFromInput(vendor, "api-key", input.apiKey)));
+                const status = await saveAndValidate(scope, vendor,
+                    credentialFromInput(vendor, "api-key", input.apiKey), input.group, runtime);
+                if (status.configured && ["protocom", "opencode-go", "commandcode", "clinepass"].includes(vendor.id)) {
+                    await runtime?.completeAuthentication(vendor.id, input.group);
+                }
+                return ok(status);
+            }
+            if (endpoint === "auth/api-key/get") {
+                const vendor = requireSubscriptionVendor(input.vendor);
+                return ok({
+                    vendor: vendor.id,
+                    group: input.group,
+                    apiKey: await readApiKeyCredential(scope, vendor, input.group)
+                });
             }
             if (endpoint === "auth/token/set") {
                 const vendor = requireSubscriptionVendor(input.vendor);
@@ -182,7 +237,11 @@ export function createSubscriptionHandler(scope) {
             }
             if (endpoint === "auth/validate") {
                 const vendor = requireSubscriptionVendor(input.vendor);
-                return ok(await validateAndReport(scope, vendor));
+                const status = await validateAndReport(scope, vendor, input.group, runtime);
+                if (status.configured && ["protocom", "opencode-go", "commandcode", "clinepass"].includes(vendor.id)) {
+                    await runtime?.completeAuthentication(vendor.id, input.group);
+                }
+                return ok(status);
             }
             if (endpoint === "auth/api-config/set") {
                 const vendor = requireSubscriptionVendor(input.vendor);
@@ -219,6 +278,7 @@ export function createSubscriptionHandler(scope) {
                 const vendor = requireSubscriptionVendor(input.vendor);
                 return withVendorLock(vendor, async () => {
                     await clearVendorCredential(scope, vendor);
+                    await runtime?.sync();
                     return ok({ configured: false, authenticated: false, verified: false, vendor: vendor.id });
                 });
             }

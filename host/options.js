@@ -1,3 +1,6 @@
+import z from "@deepseek-ai/schemastery";
+import { FAMILIES } from "./provider-runtime/protocom-api.js";
+
 const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 
 export function normalizeOptions(config) {
@@ -10,6 +13,32 @@ export function normalizeOptions(config) {
     return { value: { ...config, enabled } };
 }
 
-export const Config = {
-    "~standard": { version: 1, vendor: "dsh-subscription-management", validate: normalizeOptions }
-};
+const group = z.object({
+    enabled: z.boolean().default(false),
+    protocol: z.union(["chat-completions", "responses", "messages"]),
+    contextLengths: z.array(z.number().step(1).min(1)),
+    showBalance: z.boolean().default(true),
+    replayReasoning: z.boolean().default(false),
+    assistantTextReplay: z.union(["keep", "drop", "user"]).default("keep")
+});
+
+function providerSection(family) {
+    return z.object({
+        baseURL: z.string().default(family.baseURL),
+        allowCustomBaseURL: z.boolean(),
+        streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).default(300_000),
+        groups: z.dict(group).default({}),
+        hiddenModels: z.array(z.string()).default([]),
+        recommendedModels: z.array(z.string()).default([...family.recommended]),
+        modelContexts: z.dict(z.array(z.number().step(1).min(1))).default({}),
+        visionModels: z.dict(z.boolean()).default({})
+    }).volatile();
+}
+
+/** Native DSH model settings only: no author retry, Fusion, or custom UI schema. */
+export const Config = z.object({
+    enabled: z.boolean().default(true),
+    providers: z.object(Object.fromEntries(
+        FAMILIES.map((family) => [family.sectionKey, providerSection(family)])
+    )).default({})
+});
