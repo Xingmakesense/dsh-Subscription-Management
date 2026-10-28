@@ -137,9 +137,11 @@
 .dsh-uak-authButton:disabled { cursor:default; opacity:.55; }
 .dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:9px; margin:4px 8px 8px; padding:10px 12px 12px; border:1px solid var(--dsw-alias-border-l2); border-radius:var(--dsw-radius-md,8px); background:var(--dsw-alias-bg-sunken,transparent); }
 .dsh-uak-summaryPlan { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--dsw-alias-label-secondary); font-size:12px; }
-.dsh-uak-summaryQuota { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:10px; font-size:12px; }
-.dsh-uak-summaryQuota time { color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
-.dsh-uak-summaryPercent { justify-self:center; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-summaryQuota { display:flex; align-items:center; gap:8px; min-width:0; overflow-x:auto; font-size:12px; white-space:nowrap; }
+.dsh-uak-summaryQuota time { flex:none; color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
+.dsh-uak-summaryPercent { flex:0 0 52px; text-align:center; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-summaryResetCaption { flex:1; text-align:right; color:var(--dsw-alias-label-caption); }
+.dsh-uak-summaryDivider { flex:none; color:var(--dsw-alias-border-l2); }
 .dsh-uak-keyTitle { display:flex; align-items:center; justify-content:space-between; min-height:24px; font-size:12px; font-weight:600; }
 .dsh-uak-eyeButton { width:28px; height:24px; padding:0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; }
 .dsh-uak-keyLine { display:flex; align-items:center; gap:7px; }
@@ -596,8 +598,12 @@
                             "aria-label": account?.verified ? "已验证" : "未验证"
                         })),
                     react.createElement("div", { className: "dsh-uak-summaryQuota" },
-                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row)),
                         react.createElement("span", null, quotaWindowLabel(row)),
+                        react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
+                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row)),
+                        react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
+                        react.createElement("span", { className: "dsh-uak-summaryResetCaption" }, "距现在最近的重置时间"),
+                        react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
                         react.createElement("time", { dateTime: row?.resetAt }, formatSummaryReset(row?.resetAt))),
                     keySection(vendor),
                     react.createElement("p", { className: "dsh-uak-authHint" }, vendor.authHint),

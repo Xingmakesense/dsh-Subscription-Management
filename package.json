@@ -1,6 +1,6 @@
 {
   "name": "dsh-subscription-management",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "dsh-Subscription-Management：多厂商订阅认证、额度卡片与 DeepSeek 余额/今日用量。 · Multi-vendor subscription authentication, quota card, and DeepSeek account balance.",
   "type": "module",
   "main": "host.js",

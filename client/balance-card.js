@@ -162,13 +162,14 @@
 .dsh-uak-balancePlan {
     flex: none;
     max-width: 50%;
+    margin-left: auto;
     overflow: hidden;
     color: var(--dsw-alias-label-caption);
     font-size: 10px;
+    text-align: right;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-balancePlan::before { content: "· "; }
 .dsh-uak-balancePlan[data-tone=connected] { color: #2fa24c; }
 .dsh-uak-balancePlan[data-tone=error] { color: #e0433f; }
 .dsh-uak-balanceRings {
@@ -233,10 +234,12 @@
     line-height: 16px;
     text-align: right;
 }
+.dsh-uak-ringValue[data-tone=ok] { color: #2fa24c; }
+.dsh-uak-ringValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-ringLabel {
     max-width: 100%;
     overflow: hidden;
-    color: var(--dsw-alias-label-caption);
+    color: var(--dsw-alias-label-primary);
     font-size: 10px;
     line-height: 14px;
     text-overflow: ellipsis;
@@ -256,7 +259,7 @@
     gap: 4px;
 }
 .dsh-uak-statLabel {
-    color: var(--dsw-alias-label-caption);
+    color: var(--dsw-alias-label-primary);
     font-size: 10px;
     line-height: 14px;
 }
@@ -325,7 +328,9 @@
 
         function quotaTone(percent) {
             if (!Number.isFinite(percent)) return "unknown";
-            return percent > 10 ? "ok" : "low";
+            if (percent < 10) return "low";
+            if (percent > 10) return "ok";
+            return "default";
         }
 
         function quotaSlotNode(view) {
