@@ -128,11 +128,12 @@
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    padding: 8px;
+    padding: 5px 6px;
+    border: 1px solid var(--dsw-alias-border-l2);
     border-radius: var(--dsw-radius-md, 8px);
     background: var(--dsw-alias-bg-layer-1, transparent);
     color: var(--dsw-alias-label-secondary);
@@ -142,12 +143,11 @@
 .dsh-uak-balanceContext {
     display: flex;
     min-width: 0;
-    flex-direction: column;
-    gap: 1px;
-    padding-bottom: 3px;
-    border-bottom: 1px solid var(--dsw-alias-border-l2);
+    align-items: baseline;
+    gap: 6px;
 }
 .dsh-uak-balanceModel {
+    min-width: 0;
     overflow: hidden;
     color: var(--dsw-alias-label-primary);
     font-size: 12px;
@@ -156,17 +156,20 @@
     white-space: nowrap;
 }
 .dsh-uak-balancePlan {
+    flex: none;
+    max-width: 50%;
     overflow: hidden;
     color: var(--dsw-alias-label-caption);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.dsh-uak-balancePlan::before { content: "· "; }
 .dsh-uak-balanceRings {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 6px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
 }
 .dsh-uak-quotaRow {
@@ -212,18 +215,17 @@
     display: flex;
     min-width: 0;
     flex: 1 1 0;
-    flex-direction: column;
     align-items: center;
-    gap: 2px;
+    justify-content: space-between;
+    gap: 4px;
 }
 .dsh-uak-ringValue {
-    min-width: 2.6em;
     color: var(--dsw-alias-label-primary);
-    font-size: 14px;
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
-    line-height: 18px;
-    text-align: center;
+    line-height: 16px;
+    text-align: right;
 }
 .dsh-uak-ringValue[data-tone=ok] { color: #2fa24c; }
 .dsh-uak-ringValue[data-tone=low] { color: #e0433f; }
@@ -240,15 +242,14 @@
     display: grid;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px;
-    padding-top: 2px;
+    gap: 8px;
 }
 .dsh-uak-stat {
     display: flex;
     min-width: 0;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
 }
 .dsh-uak-statLabel {
     color: var(--dsw-alias-label-caption);
@@ -343,8 +344,8 @@
                     bar);
             }
             return react.createElement("div", { className: "dsh-uak-ringItem", key: view.id },
-                percent,
-                react.createElement("span", { className: "dsh-uak-ringLabel" }, view.label));
+                react.createElement("span", { className: "dsh-uak-ringLabel" }, view.label),
+                percent);
         }
 
         /** Current session's selected model, used to pick the vendor to show. */
