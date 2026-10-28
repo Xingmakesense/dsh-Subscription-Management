@@ -915,53 +915,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-accountRow {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 4px;
-}
-.dsh-uak-accountDot {
-    width: 7px;
-    height: 7px;
-    flex: none;
-    border-radius: 50%;
-    background: var(--dsw-alias-label-dimmed);
-}
-.dsh-uak-accountDot[data-state=ready] { background: var(--dsw-alias-state-success-primary, #2fa24c); }
-.dsh-uak-accountDot[data-state=partial] { background: var(--dsw-alias-state-warning-primary, #e8a33d); }
-.dsh-uak-accountDot[data-state=error] { background: var(--dsw-alias-state-error-primary, #e0433f); }
-.dsh-uak-accountText {
-    min-width: 0;
-    overflow: hidden;
-    flex: 1 1 auto;
-    color: var(--dsw-alias-label-caption);
-    font-size: 10px;
-    line-height: 14px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.dsh-uak-balanceRefresh {
-    flex: none;
-    width: 20px;
-    height: 18px;
-    padding: 0;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--dsw-alias-label-secondary);
-    font: inherit;
-    line-height: 18px;
-    cursor: pointer;
-}
-.dsh-uak-balanceRefresh:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-    color: var(--dsw-alias-label-primary);
-}
-.dsh-uak-balanceRefresh:focus-visible {
-    outline: 2px solid var(--dsw-alias-state-business-primary);
-    outline-offset: -1px;
-}
 .dsh-uak-balanceNarrow {
     width: auto;
     flex: 0 1 auto;
@@ -987,12 +940,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 .dsh-uak-balanceNarrow .dsh-uak-ringLabel,
 .dsh-uak-balanceNarrow .dsh-uak-quotaName,
 .dsh-uak-balanceNarrow .dsh-uak-quotaBar,
-.dsh-uak-balanceNarrow .dsh-uak-balanceStats,
-.dsh-uak-balanceNarrow .dsh-uak-accountText {
+.dsh-uak-balanceNarrow .dsh-uak-balanceStats {
     display: none;
-}
-.dsh-uak-balanceNarrow .dsh-uak-accountRow {
-    justify-content: center;
 }
 .dsh-uak-balanceNarrow:focus-visible {
     outline: 2px solid var(--dsw-alias-state-business-primary);
@@ -1138,12 +1087,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         view.slots.length === 0
                             ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
                             : view.renderedSlots.map(quotaSlotNode)),
-                    react.createElement("div", { className: "dsh-uak-accountRow" },
-                        react.createElement("span", {
-                            className: "dsh-uak-accountDot",
-                            "data-state": view.accountState,
-                            "aria-hidden": true
-                        }))
                 );
             }
 
@@ -1165,8 +1108,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     }
                 },
                 react.createElement("div", { className: "dsh-uak-balanceContext" },
-                    react.createElement("span", { className: "dsh-uak-balanceModel", title: view.modelName }, view.modelName),
-                    react.createElement("span", { className: "dsh-uak-balancePlan", title: view.planName }, view.planName)),
+                    react.createElement("span", { className: "dsh-uak-balanceModel" }, view.modelName),
+                    react.createElement("span", { className: "dsh-uak-balancePlan" }, view.planName)),
                 react.createElement("div", { className: "dsh-uak-balanceRings" },
                     view.slots.length === 0
                         ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
@@ -1174,17 +1117,10 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 react.createElement("div", { className: "dsh-uak-balanceStats" },
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "余额"),
-                        react.createElement("strong", { className: "dsh-uak-statValue", title: view.balanceText }, view.balanceText)),
+                        react.createElement("strong", { className: "dsh-uak-statValue" }, view.balanceText)),
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "今日"),
-                        react.createElement("strong", { className: "dsh-uak-statValue", title: view.todayText }, view.todayText))),
-                react.createElement("div", { className: "dsh-uak-accountRow" },
-                    react.createElement("span", {
-                        className: "dsh-uak-accountDot",
-                        "data-state": view.accountState,
-                        "aria-hidden": true
-                    }),
-                    react.createElement("span", { className: "dsh-uak-accountText" }, `${view.vendorName} · DeepSeek 账户`))
+                        react.createElement("strong", { className: "dsh-uak-statValue" }, view.todayText))),
             );
         }
         //#endregion
@@ -1340,6 +1276,9 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 .dsh-uak-keyLine .dsh-uak-authInput { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-groupTabs { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .dsh-uak-authForm { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.dsh-uak-authActions { flex-wrap:nowrap; overflow-x:auto; padding-top:2px; }
+.dsh-uak-authActions > * { flex:none; }
+.dsh-uak-authLink { display:inline-flex; align-items:center; text-decoration:none; }
 .dsh-uak-authInput { box-sizing:border-box; min-width:0; flex:1; padding:5px 9px; border:1px solid var(--dsw-alias-border-l2); border-radius:6px; background:var(--dsw-alias-bg-sunken,transparent); color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; }
 .dsh-uak-authArea { min-height:64px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-authCode { font:600 15px/20px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
@@ -1745,6 +1684,39 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 const plan = usage?.plan ?? account?.plan ?? group?.plan ?? vendor.plan;
                 const loginUrl = safeVendorLoginUrl(flow?.deviceCode?.verificationUri, vendor);
                 const isFlow = flow?.vendor === vendor.id && !TERMINAL_AUTH_PHASES.has(flow.phase);
+                const actions = [];
+                if (account?.configured) {
+                    actions.push(react.createElement("button", {
+                        key: "validate", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
+                        onClick: () => run(vendor, () => call("auth/validate", { vendor: vendor.id, group: group?.id }))
+                    }, "重新验证"));
+                    actions.push(react.createElement("button", {
+                        key: "logout", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
+                        onClick: () => run(vendor, async () => {
+                            await call("auth/logout", { vendor: vendor.id });
+                            closePanel();
+                        })
+                    }, "删除凭据"));
+                }
+                if (vendor.cli) {
+                    actions.push(react.createElement("button", {
+                        key: "cli", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
+                        onClick: () => run(vendor, () => call("auth/cli/import", { vendor: vendor.id }))
+                    }, `从 ${vendor.cli.label} 导入并验证`));
+                }
+                if (vendorSupports(vendor, "device")) {
+                    actions.push(react.createElement("button", {
+                        key: "device", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined || isFlow,
+                        onClick: () => startDevice(vendor)
+                    }, isFlow ? "等待设备授权…" : "使用账号设备登录"));
+                }
+                const consoleUrl = safeVendorLoginUrl(vendor.consoleUrl, vendor);
+                if (consoleUrl) {
+                    actions.push(react.createElement("a", {
+                        key: "console", className: "dsh-uak-authButton dsh-uak-authLink",
+                        href: consoleUrl, target: "_blank", rel: "noreferrer"
+                    }, "打开官方控制台"));
+                }
                 return react.createElement("div", { className: "dsh-uak-vendorPanel", key: `auth:${vendor.id}` },
                     react.createElement("div", { className: "dsh-uak-summaryAccount" },
                         react.createElement("span", null, usage?.accountName ?? "账户名称---"),
@@ -1763,29 +1735,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     vendor.groups ? react.createElement("div", { className: "dsh-uak-groupTabs" },
                         vendor.groups.map((entry) => react.createElement("span", { className: "dsh-uak-authHint", key: entry.id },
                             `${entry.name}${account?.groups?.[entry.id]?.verified ? " · 已验证" : account?.groups?.[entry.id]?.configured ? " · 未验证" : " · 未配置"}`))) : null,
-                    account?.configured ? react.createElement("div", { className: "dsh-uak-authForm" },
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, () => call("auth/validate", { vendor: vendor.id, group: group?.id }))
-                        }, "重新验证"),
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, async () => {
-                                await call("auth/logout", { vendor: vendor.id });
-                                closePanel();
-                            })
-                        }, "删除凭据")) : null,
-                    vendor.cli ? react.createElement("div", { className: "dsh-uak-authForm" },
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, () => call("auth/cli/import", { vendor: vendor.id }))
-                        }, `从 ${vendor.cli.label} 导入并验证`),
-                        react.createElement("span", { className: "dsh-uak-authHint" }, `先运行 ${vendor.cli.command}`)) : null,
-                    vendorSupports(vendor, "device") ? react.createElement("div", { className: "dsh-uak-authForm" },
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined || isFlow,
-                            onClick: () => startDevice(vendor)
-                        }, isFlow ? "等待设备授权…" : "使用账号设备登录")) : null,
                     isFlow ? react.createElement("div", { className: "dsh-uak-authForm" },
                         react.createElement("span", { className: "dsh-uak-authHint" }, "设备代码："),
                         react.createElement("span", { className: "dsh-uak-authCode" }, flow.deviceCode?.userCode ?? "—"),
@@ -1798,11 +1747,9 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     vendor.groups ? vendor.groups.map((entry) => react.createElement("div", { key: `save:${entry.id}` },
                         react.createElement("p", { className: "dsh-uak-authHint" }, `${entry.name} API Key`),
                         secretPanel(vendor, "api-key", entry.id))) : null,
-                    safeVendorLoginUrl(vendor.consoleUrl, vendor) ? react.createElement("a", {
-                        href: safeVendorLoginUrl(vendor.consoleUrl, vendor), target: "_blank", rel: "noreferrer"
-                    }, "打开官方控制台") : null,
                     summary?.error ? react.createElement("p", { className: "dsh-uak-authError" }, summary.error) : null,
-                    error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError", role: "alert" }, error));
+                    error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError", role: "alert" }, error),
+                    actions.length > 0 ? react.createElement("div", { className: "dsh-uak-authForm dsh-uak-authActions" }, actions) : null);
             };
 
             const apiPanel = (vendor) => {

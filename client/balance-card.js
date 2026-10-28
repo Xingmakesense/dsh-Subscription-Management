@@ -265,53 +265,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-accountRow {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 4px;
-}
-.dsh-uak-accountDot {
-    width: 7px;
-    height: 7px;
-    flex: none;
-    border-radius: 50%;
-    background: var(--dsw-alias-label-dimmed);
-}
-.dsh-uak-accountDot[data-state=ready] { background: var(--dsw-alias-state-success-primary, #2fa24c); }
-.dsh-uak-accountDot[data-state=partial] { background: var(--dsw-alias-state-warning-primary, #e8a33d); }
-.dsh-uak-accountDot[data-state=error] { background: var(--dsw-alias-state-error-primary, #e0433f); }
-.dsh-uak-accountText {
-    min-width: 0;
-    overflow: hidden;
-    flex: 1 1 auto;
-    color: var(--dsw-alias-label-caption);
-    font-size: 10px;
-    line-height: 14px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.dsh-uak-balanceRefresh {
-    flex: none;
-    width: 20px;
-    height: 18px;
-    padding: 0;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--dsw-alias-label-secondary);
-    font: inherit;
-    line-height: 18px;
-    cursor: pointer;
-}
-.dsh-uak-balanceRefresh:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-    color: var(--dsw-alias-label-primary);
-}
-.dsh-uak-balanceRefresh:focus-visible {
-    outline: 2px solid var(--dsw-alias-state-business-primary);
-    outline-offset: -1px;
-}
 .dsh-uak-balanceNarrow {
     width: auto;
     flex: 0 1 auto;
@@ -337,12 +290,8 @@
 .dsh-uak-balanceNarrow .dsh-uak-ringLabel,
 .dsh-uak-balanceNarrow .dsh-uak-quotaName,
 .dsh-uak-balanceNarrow .dsh-uak-quotaBar,
-.dsh-uak-balanceNarrow .dsh-uak-balanceStats,
-.dsh-uak-balanceNarrow .dsh-uak-accountText {
+.dsh-uak-balanceNarrow .dsh-uak-balanceStats {
     display: none;
-}
-.dsh-uak-balanceNarrow .dsh-uak-accountRow {
-    justify-content: center;
 }
 .dsh-uak-balanceNarrow:focus-visible {
     outline: 2px solid var(--dsw-alias-state-business-primary);
@@ -488,12 +437,6 @@
                         view.slots.length === 0
                             ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
                             : view.renderedSlots.map(quotaSlotNode)),
-                    react.createElement("div", { className: "dsh-uak-accountRow" },
-                        react.createElement("span", {
-                            className: "dsh-uak-accountDot",
-                            "data-state": view.accountState,
-                            "aria-hidden": true
-                        }))
                 );
             }
 
@@ -515,8 +458,8 @@
                     }
                 },
                 react.createElement("div", { className: "dsh-uak-balanceContext" },
-                    react.createElement("span", { className: "dsh-uak-balanceModel", title: view.modelName }, view.modelName),
-                    react.createElement("span", { className: "dsh-uak-balancePlan", title: view.planName }, view.planName)),
+                    react.createElement("span", { className: "dsh-uak-balanceModel" }, view.modelName),
+                    react.createElement("span", { className: "dsh-uak-balancePlan" }, view.planName)),
                 react.createElement("div", { className: "dsh-uak-balanceRings" },
                     view.slots.length === 0
                         ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
@@ -524,16 +467,9 @@
                 react.createElement("div", { className: "dsh-uak-balanceStats" },
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "余额"),
-                        react.createElement("strong", { className: "dsh-uak-statValue", title: view.balanceText }, view.balanceText)),
+                        react.createElement("strong", { className: "dsh-uak-statValue" }, view.balanceText)),
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "今日"),
-                        react.createElement("strong", { className: "dsh-uak-statValue", title: view.todayText }, view.todayText))),
-                react.createElement("div", { className: "dsh-uak-accountRow" },
-                    react.createElement("span", {
-                        className: "dsh-uak-accountDot",
-                        "data-state": view.accountState,
-                        "aria-hidden": true
-                    }),
-                    react.createElement("span", { className: "dsh-uak-accountText" }, `${view.vendorName} · DeepSeek 账户`))
+                        react.createElement("strong", { className: "dsh-uak-statValue" }, view.todayText))),
             );
         }

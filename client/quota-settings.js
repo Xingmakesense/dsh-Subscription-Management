@@ -148,6 +148,9 @@
 .dsh-uak-keyLine .dsh-uak-authInput { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-groupTabs { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .dsh-uak-authForm { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.dsh-uak-authActions { flex-wrap:nowrap; overflow-x:auto; padding-top:2px; }
+.dsh-uak-authActions > * { flex:none; }
+.dsh-uak-authLink { display:inline-flex; align-items:center; text-decoration:none; }
 .dsh-uak-authInput { box-sizing:border-box; min-width:0; flex:1; padding:5px 9px; border:1px solid var(--dsw-alias-border-l2); border-radius:6px; background:var(--dsw-alias-bg-sunken,transparent); color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; }
 .dsh-uak-authArea { min-height:64px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-authCode { font:600 15px/20px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
@@ -553,6 +556,39 @@
                 const plan = usage?.plan ?? account?.plan ?? group?.plan ?? vendor.plan;
                 const loginUrl = safeVendorLoginUrl(flow?.deviceCode?.verificationUri, vendor);
                 const isFlow = flow?.vendor === vendor.id && !TERMINAL_AUTH_PHASES.has(flow.phase);
+                const actions = [];
+                if (account?.configured) {
+                    actions.push(react.createElement("button", {
+                        key: "validate", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
+                        onClick: () => run(vendor, () => call("auth/validate", { vendor: vendor.id, group: group?.id }))
+                    }, "重新验证"));
+                    actions.push(react.createElement("button", {
+                        key: "logout", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
+                        onClick: () => run(vendor, async () => {
+                            await call("auth/logout", { vendor: vendor.id });
+                            closePanel();
+                        })
+                    }, "删除凭据"));
+                }
+                if (vendor.cli) {
+                    actions.push(react.createElement("button", {
+                        key: "cli", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
+                        onClick: () => run(vendor, () => call("auth/cli/import", { vendor: vendor.id }))
+                    }, `从 ${vendor.cli.label} 导入并验证`));
+                }
+                if (vendorSupports(vendor, "device")) {
+                    actions.push(react.createElement("button", {
+                        key: "device", type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined || isFlow,
+                        onClick: () => startDevice(vendor)
+                    }, isFlow ? "等待设备授权…" : "使用账号设备登录"));
+                }
+                const consoleUrl = safeVendorLoginUrl(vendor.consoleUrl, vendor);
+                if (consoleUrl) {
+                    actions.push(react.createElement("a", {
+                        key: "console", className: "dsh-uak-authButton dsh-uak-authLink",
+                        href: consoleUrl, target: "_blank", rel: "noreferrer"
+                    }, "打开官方控制台"));
+                }
                 return react.createElement("div", { className: "dsh-uak-vendorPanel", key: `auth:${vendor.id}` },
                     react.createElement("div", { className: "dsh-uak-summaryAccount" },
                         react.createElement("span", null, usage?.accountName ?? "账户名称---"),
@@ -571,29 +607,6 @@
                     vendor.groups ? react.createElement("div", { className: "dsh-uak-groupTabs" },
                         vendor.groups.map((entry) => react.createElement("span", { className: "dsh-uak-authHint", key: entry.id },
                             `${entry.name}${account?.groups?.[entry.id]?.verified ? " · 已验证" : account?.groups?.[entry.id]?.configured ? " · 未验证" : " · 未配置"}`))) : null,
-                    account?.configured ? react.createElement("div", { className: "dsh-uak-authForm" },
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, () => call("auth/validate", { vendor: vendor.id, group: group?.id }))
-                        }, "重新验证"),
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, async () => {
-                                await call("auth/logout", { vendor: vendor.id });
-                                closePanel();
-                            })
-                        }, "删除凭据")) : null,
-                    vendor.cli ? react.createElement("div", { className: "dsh-uak-authForm" },
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined,
-                            onClick: () => run(vendor, () => call("auth/cli/import", { vendor: vendor.id }))
-                        }, `从 ${vendor.cli.label} 导入并验证`),
-                        react.createElement("span", { className: "dsh-uak-authHint" }, `先运行 ${vendor.cli.command}`)) : null,
-                    vendorSupports(vendor, "device") ? react.createElement("div", { className: "dsh-uak-authForm" },
-                        react.createElement("button", {
-                            type: "button", className: "dsh-uak-authButton", disabled: busyVendor !== undefined || isFlow,
-                            onClick: () => startDevice(vendor)
-                        }, isFlow ? "等待设备授权…" : "使用账号设备登录")) : null,
                     isFlow ? react.createElement("div", { className: "dsh-uak-authForm" },
                         react.createElement("span", { className: "dsh-uak-authHint" }, "设备代码："),
                         react.createElement("span", { className: "dsh-uak-authCode" }, flow.deviceCode?.userCode ?? "—"),
@@ -606,11 +619,9 @@
                     vendor.groups ? vendor.groups.map((entry) => react.createElement("div", { key: `save:${entry.id}` },
                         react.createElement("p", { className: "dsh-uak-authHint" }, `${entry.name} API Key`),
                         secretPanel(vendor, "api-key", entry.id))) : null,
-                    safeVendorLoginUrl(vendor.consoleUrl, vendor) ? react.createElement("a", {
-                        href: safeVendorLoginUrl(vendor.consoleUrl, vendor), target: "_blank", rel: "noreferrer"
-                    }, "打开官方控制台") : null,
                     summary?.error ? react.createElement("p", { className: "dsh-uak-authError" }, summary.error) : null,
-                    error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError", role: "alert" }, error));
+                    error === undefined ? null : react.createElement("p", { className: "dsh-uak-authError", role: "alert" }, error),
+                    actions.length > 0 ? react.createElement("div", { className: "dsh-uak-authForm dsh-uak-authActions" }, actions) : null);
             };
 
             const apiPanel = (vendor) => {
