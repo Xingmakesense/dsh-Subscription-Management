@@ -135,13 +135,11 @@
 .dsh-uak-authButton[data-primary=true] { border-color:var(--dsw-alias-state-business-primary); background:var(--dsw-alias-state-business-primary); color:var(--dsw-alias-on-business-primary,#fff); }
 .dsh-uak-authButton[data-active=true] { border-color:var(--dsw-alias-state-business-primary); }
 .dsh-uak-authButton:disabled { cursor:default; opacity:.55; }
-.dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:9px; padding:10px 12px 12px; border-top:1px solid var(--dsw-alias-border-l2); background:var(--dsw-alias-bg-sunken,transparent); }
-.dsh-uak-summaryAccount { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; font-size:13px; font-weight:600; }
-.dsh-uak-summaryAccount span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.dsh-uak-summaryPlan { color:var(--dsw-alias-label-secondary); font-size:12px; }
-.dsh-uak-summaryQuota { display:grid; grid-template-columns:minmax(110px,auto) 1fr auto; align-items:center; gap:10px; font-size:12px; }
+.dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:9px; margin:4px 8px 8px; padding:10px 12px 12px; border:1px solid var(--dsw-alias-border-l2); border-radius:var(--dsw-radius-md,8px); background:var(--dsw-alias-bg-sunken,transparent); }
+.dsh-uak-summaryPlan { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--dsw-alias-label-secondary); font-size:12px; }
+.dsh-uak-summaryQuota { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:10px; font-size:12px; }
 .dsh-uak-summaryQuota time { color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
-.dsh-uak-summaryPercent { justify-self:end; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-summaryPercent { justify-self:center; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
 .dsh-uak-keyTitle { display:flex; align-items:center; justify-content:space-between; min-height:24px; font-size:12px; font-weight:600; }
 .dsh-uak-eyeButton { width:28px; height:24px; padding:0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; }
 .dsh-uak-keyLine { display:flex; align-items:center; gap:7px; }
@@ -590,18 +588,17 @@
                     }, "打开官方控制台"));
                 }
                 return react.createElement("div", { className: "dsh-uak-vendorPanel", key: `auth:${vendor.id}` },
-                    react.createElement("div", { className: "dsh-uak-summaryAccount" },
-                        react.createElement("span", null, usage?.accountName ?? "账户名称---"),
+                    react.createElement("div", { className: "dsh-uak-summaryPlan" },
+                        react.createElement("span", null, `套餐：${plan ?? "—"}`),
                         react.createElement("span", {
                             className: "dsh-uak-summaryDot",
                             "data-state": account?.verified ? "connected" : "error",
                             "aria-label": account?.verified ? "已验证" : "未验证"
                         })),
-                    react.createElement("div", { className: "dsh-uak-summaryPlan" }, `套餐：${plan ?? "—"}`),
                     react.createElement("div", { className: "dsh-uak-summaryQuota" },
+                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row)),
                         react.createElement("span", null, quotaWindowLabel(row)),
-                        react.createElement("time", { dateTime: row?.resetAt }, formatSummaryReset(row?.resetAt)),
-                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row))),
+                        react.createElement("time", { dateTime: row?.resetAt }, formatSummaryReset(row?.resetAt))),
                     keySection(vendor),
                     react.createElement("p", { className: "dsh-uak-authHint" }, vendor.authHint),
                     vendor.groups ? react.createElement("div", { className: "dsh-uak-groupTabs" },

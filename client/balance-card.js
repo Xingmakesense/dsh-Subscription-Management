@@ -117,6 +117,10 @@
                 renderedSlots: renderedViews,
                 balanceText,
                 todayText,
+                balanceTone: Number.isFinite(data?.totalBalance) && data.totalBalance <= 5 ? "low" : "default",
+                planTone: kimiState?.status === "ready" || (kimiState?.status === "refreshing" && kimiState?.usage != null)
+                    ? "connected"
+                    : "error",
                 accountState: accountOverallState(kimiState, deepState),
                 title: lines.join("\n")
             };
@@ -165,6 +169,8 @@
     white-space: nowrap;
 }
 .dsh-uak-balancePlan::before { content: "· "; }
+.dsh-uak-balancePlan[data-tone=connected] { color: #2fa24c; }
+.dsh-uak-balancePlan[data-tone=error] { color: #e0433f; }
 .dsh-uak-balanceRings {
     display: flex;
     flex-wrap: nowrap;
@@ -227,8 +233,6 @@
     line-height: 16px;
     text-align: right;
 }
-.dsh-uak-ringValue[data-tone=ok] { color: #2fa24c; }
-.dsh-uak-ringValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-ringLabel {
     max-width: 100%;
     overflow: hidden;
@@ -266,6 +270,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.dsh-uak-statValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-balanceNarrow {
     width: auto;
     flex: 0 1 auto;
@@ -460,7 +465,7 @@
                 },
                 react.createElement("div", { className: "dsh-uak-balanceContext" },
                     react.createElement("span", { className: "dsh-uak-balanceModel" }, view.modelName),
-                    react.createElement("span", { className: "dsh-uak-balancePlan" }, view.planName)),
+                    react.createElement("span", { className: "dsh-uak-balancePlan", "data-tone": view.planTone }, view.planName)),
                 react.createElement("div", { className: "dsh-uak-balanceRings" },
                     view.slots.length === 0
                         ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
@@ -468,7 +473,7 @@
                 react.createElement("div", { className: "dsh-uak-balanceStats" },
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "余额"),
-                        react.createElement("strong", { className: "dsh-uak-statValue" }, view.balanceText)),
+                        react.createElement("strong", { className: "dsh-uak-statValue", "data-tone": view.balanceTone }, view.balanceText)),
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "今日"),
                         react.createElement("strong", { className: "dsh-uak-statValue" }, view.todayText))),
