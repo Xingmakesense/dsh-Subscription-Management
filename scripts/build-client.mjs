@@ -6,6 +6,7 @@ const sources = [
     "runtime.js",
     "options.js",
     "subscription-catalog.js",
+    "theme.js",
     "quota.js",
     "deepseek-balance.js",
     "balance-card.js",

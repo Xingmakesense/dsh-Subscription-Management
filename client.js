@@ -243,6 +243,174 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
         }
         //#endregion
 
+        //#region client/theme.js
+/**
+         * Theme contract shared by every card and panel this plugin renders.
+         *
+         * Colours come from the harness theme tokens (light and dark), so a theme
+         * switch recolours the plugin without a reload. Utility-Appearance-Kit is
+         * installed in the same profile and redefines some of those tokens on the
+         * document root; that only repaints, it never removes a declaration this
+         * stylesheet relies on. Every rule therefore keeps a literal fallback, and
+         * the state colours (red/green) are literals so they survive any palette.
+         *
+         * The `--dsm-*` names are private: they are remapped together with each
+         * theme so one change cannot leave a half-theme behind.
+         */
+        const THEME_VARS = `
+[data-dsh-plugin="dsh-subscription-management"] {
+    --dsm-text: var(--dsw-alias-label-primary, #172033);
+    --dsm-text-secondary: var(--dsw-alias-label-secondary, #4b5563);
+    --dsm-text-caption: var(--dsw-alias-label-tertiary, #6b7280);
+    --dsm-border: var(--dsw-alias-border-l3, var(--dsw-alias-border-l2, #dbe3ef));
+    --dsm-surface: var(--dsw-alias-bg-module-platform, var(--dsw-alias-bg-layer-1, #ffffff));
+    --dsm-sunken: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-sunken, #f4f7fb));
+    --dsm-hover: var(--dsw-alias-interactive-bg-hover, rgb(125 160 220 / .14));
+    --dsm-accent: var(--dsw-alias-state-business-primary, #2563eb);
+    --dsm-on-accent: var(--dsw-alias-on-business-primary, #ffffff);
+    --dsm-ok: #2fa24c;
+    --dsm-bad: #e0433f;
+    --dsm-warn: #e8a33d;
+    color: var(--dsm-text);
+}
+[data-dsh-plugin="dsh-subscription-management"] .dsh-uak-authButton {
+    color: var(--dsm-text);
+    border-color: var(--dsm-border);
+}
+[data-dsh-plugin="dsh-subscription-management"] .dsh-uak-authButton[data-primary=true] {
+    border-color: var(--dsm-accent);
+    background: var(--dsm-accent);
+    color: var(--dsm-on-accent);
+}
+[data-dsh-plugin="dsh-subscription-management"] .dsh-uak-authButton:not([data-primary=true]):hover {
+    background: var(--dsm-hover);
+}
+[data-dsh-plugin="dsh-subscription-management"] :where(.dsh-uak-authButton, .dsh-uak-eyeButton, .dsh-uak-vendorHandle, .dsh-uak-authLink):focus-visible,
+[data-dsh-plugin="dsh-subscription-management"] .dsh-uak-balanceCard:focus-visible {
+    outline: 2px solid var(--dsm-accent);
+    outline-offset: 1px;
+}
+@media (prefers-color-scheme: dark) {
+    [data-dsh-plugin="dsh-subscription-management"] {
+        --dsm-ok: #4ade80;
+        --dsm-bad: #f87171;
+    }
+}
+`;
+
+        /**
+         * Auto-continue notice repair (third-party row supplied by dsh-cockpit).
+         *
+         * The row paints itself with `--dsw-alias-bg-elevated` / label tokens, so a
+         * theme switch (or Utility-Appearance-Kit's token overrides) can leave it
+         * unreadable. This scope pins that one row to black on white regardless of
+         * theme, marks the failure code red and leaves every other colour alone. It
+         * is deliberately scoped by the row's own `status` role plus the
+         * auto-continue prefix, so no unrelated notice is touched.
+         */
+        const CONTINUE_NOTICE_SELECTOR = '[role="status"][aria-live="polite"]';
+        const CONTINUE_NOTICE_MARK = "dsm-continue-notice";
+        const CONTINUE_NOTICE_FIX = "dsm-continue-notice-fix";
+        const CONTINUE_NOTICE_PREFIX = "【自动续轮";
+        const CONTINUE_NOTICE_CSS = `
+[data-dsm-continue-notice="${CONTINUE_NOTICE_FIX}"],
+[data-dsm-continue-notice="${CONTINUE_NOTICE_FIX}"] * {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
+[data-dsm-continue-notice="${CONTINUE_NOTICE_FIX}"] {
+    background: #000000 !important;
+    border-color: #3a3a3a !important;
+    border-left-color: #ffffff !important;
+}
+[data-dsm-continue-notice="${CONTINUE_NOTICE_FIX}"] [data-dsm-failure-code="true"] {
+    color: #ff4d4f !important;
+    -webkit-text-fill-color: #ff4d4f !important;
+    font-weight: 600;
+}
+`;
+
+        const FAILURE_CODE_PATTERN = /(故障码\s*)\b([A-Z][A-Z0-9_]{1,})\b/;
+
+        /**
+         * Split one notice row's text so the failure code can be highlighted.
+         * @param {string} value - the row's whole text content.
+         * @returns {{ code: string | undefined, parts: Array<{ value: string, code: boolean }> }}
+         */
+        function splitContinueNoticeText(value) {
+            const text = typeof value === "string" ? value : "";
+            const match = FAILURE_CODE_PATTERN.exec(text);
+            if (match === null) return { code: undefined, parts: [{ value: text, code: false }] };
+            const start = match.index;
+            const end = start + match[0].length;
+            return {
+                code: match[2],
+                parts: [
+                    { value: text.slice(0, start + match[1].length), code: false },
+                    { value: match[2], code: true },
+                    { value: text.slice(end), code: false }
+                ].filter((part) => part.value.length > 0)
+            };
+        }
+
+        function isContinueNotice(node) {
+            if (typeof Element === "undefined" || !(node instanceof Element)) return false;
+            if (!node.matches(CONTINUE_NOTICE_SELECTOR)) return false;
+            return String(node.textContent ?? "").startsWith(CONTINUE_NOTICE_PREFIX);
+        }
+
+        function markContinueNotice(node) {
+            if (node.getAttribute("data-dsm-continue-notice") === CONTINUE_NOTICE_FIX) return;
+            const { parts } = splitContinueNoticeText(node.textContent ?? "");
+            if (parts.length > 1) {
+                // The row is a third-party React subtree. Repaint it once by
+                // replacing only the text nodes whose value is the failure code;
+                // attribution goes on an inline span so no foreign markup is kept.
+                const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+                let current = walker.nextNode();
+                while (current !== null) {
+                    const text = current.nodeValue ?? "";
+                    const match = FAILURE_CODE_PATTERN.exec(text);
+                    if (match !== null) {
+                        const codeStart = match.index + match[1].length;
+                        const code = match[2];
+                        const after = current.splitText(codeStart);
+                        const highlighted = after.splitText(code.length);
+                        const span = document.createElement("span");
+                        span.setAttribute("data-dsm-failure-code", "true");
+                        span.textContent = code;
+                        after.parentNode?.replaceChild(span, after);
+                        if (highlighted.nodeValue === "") highlighted.remove();
+                        break;
+                    }
+                    current = walker.nextNode();
+                }
+            }
+            node.setAttribute("data-dsm-continue-notice", CONTINUE_NOTICE_FIX);
+        }
+
+        function mountContinueNoticeFix() {
+            if (typeof document === "undefined" || typeof MutationObserver === "undefined") return () => {};
+            const scan = (root) => {
+                if (isContinueNotice(root)) markContinueNotice(root);
+                if (typeof root.querySelectorAll !== "function") return;
+                for (const node of root.querySelectorAll(CONTINUE_NOTICE_SELECTOR)) {
+                    if (isContinueNotice(node)) markContinueNotice(node);
+                }
+            };
+            scan(document);
+            const observer = new MutationObserver((records) => {
+                for (const record of records) {
+                    for (const node of record.addedNodes) {
+                        if (node.nodeType === 1) scan(node);
+                    }
+                }
+            });
+            observer.observe(document.body ?? document.documentElement, { childList: true, subtree: true });
+            return () => observer.disconnect();
+        }
+        //#endregion
+
         //#region client/quota.js
 // Kimi subscription quota. Data comes directly from this plugin's Host
         // route, which owns the Kimi usage request. No sibling plugin RPC is used.
@@ -787,13 +955,15 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     min-width: 0;
     max-width: 100%;
     padding: 5px 6px;
-    border: 1px solid var(--dsw-alias-border-l2);
+    border: 1px solid var(--dsm-border);
     border-radius: var(--dsw-radius-md, 8px);
-    background: var(--dsw-alias-bg-layer-1, transparent);
-    color: var(--dsw-alias-label-secondary);
+    background: var(--dsm-surface);
+    color: var(--dsm-text-secondary);
     font-size: 11px;
     line-height: 15px;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
+.dsh-uak-balanceCard:hover { border-color: var(--dsm-accent); }
 .dsh-uak-balanceContext {
     display: flex;
     min-width: 0;
@@ -803,7 +973,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 .dsh-uak-balanceModel {
     min-width: 0;
     overflow: hidden;
-    color: var(--dsw-alias-label-primary);
+    color: var(--dsm-text);
     font-size: 12px;
     font-weight: 600;
     text-overflow: ellipsis;
@@ -814,14 +984,14 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     max-width: 50%;
     margin-left: auto;
     overflow: hidden;
-    color: var(--dsw-alias-label-caption);
+    color: var(--dsm-text-caption);
     font-size: 10px;
     text-align: right;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-balancePlan[data-tone=connected] { color: #2fa24c; }
-.dsh-uak-balancePlan[data-tone=error] { color: #e0433f; }
+.dsh-uak-balancePlan[data-tone=connected] { color: var(--dsm-ok); }
+.dsh-uak-balancePlan[data-tone=error] { color: var(--dsm-bad); }
 .dsh-uak-balanceRings {
     display: flex;
     flex-wrap: nowrap;
@@ -845,7 +1015,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 }
 .dsh-uak-quotaName {
     overflow: hidden;
-    color: var(--dsw-alias-label-secondary);
+    color: var(--dsm-text-secondary);
     font-size: 12px;
     line-height: 16px;
     text-overflow: ellipsis;
@@ -866,8 +1036,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     background: var(--dsw-alias-label-secondary);
     transition: width .2s ease;
 }
-.dsh-uak-quotaFill[data-tone=ok] { background: #2fa24c; }
-.dsh-uak-quotaFill[data-tone=low] { background: #e0433f; }
+.dsh-uak-quotaFill[data-tone=ok] { background: var(--dsm-ok); }
+.dsh-uak-quotaFill[data-tone=low] { background: var(--dsm-bad); }
 .dsh-uak-ringItem {
     display: flex;
     min-width: 0;
@@ -877,19 +1047,19 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     gap: 4px;
 }
 .dsh-uak-ringValue {
-    color: var(--dsw-alias-label-primary);
+    color: var(--dsm-text);
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     line-height: 16px;
     text-align: right;
 }
-.dsh-uak-ringValue[data-tone=ok] { color: #2fa24c; }
-.dsh-uak-ringValue[data-tone=low] { color: #e0433f; }
+.dsh-uak-ringValue[data-tone=ok] { color: var(--dsm-ok); }
+.dsh-uak-ringValue[data-tone=low] { color: var(--dsm-bad); }
 .dsh-uak-ringLabel {
     max-width: 100%;
     overflow: hidden;
-    color: var(--dsw-alias-label-primary);
+    color: var(--dsm-text);
     font-size: 10px;
     line-height: 14px;
     text-overflow: ellipsis;
@@ -909,21 +1079,21 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     gap: 4px;
 }
 .dsh-uak-statLabel {
-    color: var(--dsw-alias-label-primary);
+    color: var(--dsm-text);
     font-size: 10px;
     line-height: 14px;
 }
 .dsh-uak-statValue {
     max-width: 100%;
     overflow: hidden;
-    color: var(--dsw-alias-label-primary);
+    color: var(--dsm-text);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-statValue[data-tone=low] { color: #e0433f; }
+.dsh-uak-statValue[data-tone=low] { color: var(--dsm-bad); }
 .dsh-uak-balanceNarrow {
     width: auto;
     flex: 0 1 auto;
@@ -1249,40 +1419,41 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
         }
 
         const authCss = `
-.dsh-uak-auth { display:flex; flex-direction:column; gap:10px; max-width:760px; color:var(--dsw-alias-label-primary); }
+.dsh-uak-auth { display:flex; flex-direction:column; gap:10px; max-width:760px; color:var(--dsm-text); }
 .dsh-uak-authHead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .dsh-uak-auth h2,.dsh-uak-auth p { margin:0; }
-.dsh-uak-auth h2 { font-size:16px; line-height:24px; font-weight:500; }
-.dsh-uak-authHint { color:var(--dsw-alias-label-tertiary); font-size:12px; line-height:17px; }
-.dsh-uak-nativeGuide { padding:8px 10px; border:1px solid var(--dsw-alias-border-l2); border-radius:8px; background:var(--dsw-alias-bg-layer-1,transparent); color:var(--dsw-alias-label-secondary); font-size:12px; line-height:17px; }
-.dsh-uak-authList { display:flex; flex-direction:column; overflow:hidden; border-radius:10px; background:var(--dsw-alias-bg-layer-1,transparent); }
+.dsh-uak-auth h2 { font-size:16px; line-height:24px; font-weight:600; }
+.dsh-uak-authHint { color:var(--dsm-text-caption); font-size:12px; line-height:17px; }
+.dsh-uak-nativeGuide { padding:8px 10px; border:1px solid var(--dsm-border); border-radius:8px; background:var(--dsm-surface); color:var(--dsm-text-secondary); font-size:12px; line-height:17px; }
+.dsh-uak-authList { display:flex; flex-direction:column; overflow:hidden; border-radius:10px; background:var(--dsm-surface); }
 .dsh-uak-manageSection { display:flex; flex-direction:column; gap:5px; }
-.dsh-uak-manageTitle { margin:4px 2px 0; color:var(--dsw-alias-label-secondary); font-size:12px; font-weight:600; }
-.dsh-uak-manageDrop { min-height:42px; border:1px dashed var(--dsw-alias-border-l2); border-radius:8px; }
+.dsh-uak-manageTitle { margin:4px 2px 0; color:var(--dsm-text-secondary); font-size:12px; font-weight:600; }
+.dsh-uak-manageDrop { min-height:42px; border:1px dashed var(--dsm-border); border-radius:8px; }
 .dsh-uak-manageDrop .dsh-uak-authList { border:0; }
-.dsh-uak-vendorRow { display:flex; align-items:center; gap:9px; min-height:38px; padding:6px 12px; border-top:1px solid var(--dsw-alias-border-l2); cursor:pointer; }
+.dsh-uak-vendorRow { display:flex; align-items:center; gap:9px; min-height:38px; padding:6px 12px; border-top:1px solid var(--dsm-border); cursor:pointer; }
 .dsh-uak-vendorRow:first-child { border-top:0; }
-.dsh-uak-vendorRow[data-managing=true] { background:var(--dsw-alias-bg-sunken,transparent); cursor:default; }
+.dsh-uak-vendorRow:hover { background:var(--dsm-hover); }
+.dsh-uak-vendorRow[data-managing=true] { background:var(--dsm-sunken); cursor:default; }
 .dsh-uak-vendorName { min-width:0; flex:1; overflow:hidden; font-size:13px; line-height:18px; text-overflow:ellipsis; white-space:nowrap; }
-.dsh-uak-vendorHandle { flex:none; width:20px; height:24px; padding:0; border:0; background:transparent; color:var(--dsw-alias-label-caption); cursor:grab; user-select:none; }
+.dsh-uak-vendorHandle { flex:none; width:20px; height:24px; padding:0; border:0; background:transparent; color:var(--dsm-text-caption); cursor:grab; user-select:none; }
 .dsh-uak-vendorHandle:active { cursor:grabbing; }
-.dsh-uak-vendorDot,.dsh-uak-summaryDot { width:7px; height:7px; flex:none; border-radius:50%; background:#e0433f; }
-.dsh-uak-vendorDot[data-state=connected],.dsh-uak-summaryDot[data-state=connected] { background:#2fa24c; }
-.dsh-uak-vendorStatus { color:#e0433f; }
-.dsh-uak-vendorStatus[data-state=connected] { color:#2fa24c; }
-.dsh-uak-authButton { flex:none; padding:3px 10px; border:1px solid var(--dsw-alias-border-l2); border-radius:6px; background:transparent; color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; line-height:18px; cursor:pointer; white-space:nowrap; }
-.dsh-uak-authButton[data-primary=true] { border-color:var(--dsw-alias-state-business-primary); background:var(--dsw-alias-state-business-primary); color:var(--dsw-alias-on-business-primary,#fff); }
-.dsh-uak-authButton[data-active=true] { border-color:var(--dsw-alias-state-business-primary); }
+.dsh-uak-vendorDot,.dsh-uak-summaryDot { width:7px; height:7px; flex:none; border-radius:50%; background:var(--dsm-bad); }
+.dsh-uak-vendorDot[data-state=connected],.dsh-uak-summaryDot[data-state=connected] { background:var(--dsm-ok); }
+.dsh-uak-vendorStatus { color:var(--dsm-bad); }
+.dsh-uak-vendorStatus[data-state=connected] { color:var(--dsm-ok); }
+.dsh-uak-authButton { flex:none; padding:3px 10px; border:1px solid var(--dsm-border); border-radius:6px; background:transparent; color:var(--dsm-text); font:inherit; font-size:12px; line-height:18px; cursor:pointer; white-space:nowrap; transition:background-color .16s ease, border-color .16s ease; }
+.dsh-uak-authButton[data-primary=true] { border-color:var(--dsm-accent); background:var(--dsm-accent); color:var(--dsm-on-accent); }
+.dsh-uak-authButton[data-active=true] { border-color:var(--dsm-accent); }
 .dsh-uak-authButton:disabled { cursor:default; opacity:.55; }
-.dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:9px; margin:4px 8px 8px; padding:10px 12px 12px; border:1px solid var(--dsw-alias-border-l2); border-radius:var(--dsw-radius-md,8px); background:var(--dsw-alias-bg-sunken,transparent); }
-.dsh-uak-summaryPlan { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--dsw-alias-label-secondary); font-size:12px; }
+.dsh-uak-vendorPanel { display:flex; flex-direction:column; gap:9px; margin:4px 8px 8px; padding:10px 12px 12px; border:1px solid var(--dsm-border); border-radius:var(--dsw-radius-md,8px); background:var(--dsm-sunken); }
+.dsh-uak-summaryPlan { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--dsm-text-secondary); font-size:12px; }
 .dsh-uak-summaryQuota { display:flex; align-items:center; gap:8px; min-width:0; overflow-x:auto; font-size:12px; white-space:nowrap; }
-.dsh-uak-summaryQuota time { flex:none; color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
-.dsh-uak-summaryPercent { flex:0 0 52px; text-align:center; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
-.dsh-uak-summaryResetCaption { flex:1; text-align:right; color:var(--dsw-alias-label-caption); }
-.dsh-uak-summaryDivider { flex:none; color:var(--dsw-alias-border-l2); }
+.dsh-uak-summaryQuota time { flex:none; color:var(--dsm-text-caption); font-variant-numeric:tabular-nums; }
+.dsh-uak-summaryPercent { flex:0 0 52px; text-align:center; color:var(--dsm-text); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-summaryResetCaption { flex:1; text-align:right; color:var(--dsm-text-caption); }
+.dsh-uak-summaryDivider { flex:none; color:var(--dsm-border); }
 .dsh-uak-keyTitle { display:flex; align-items:center; justify-content:space-between; min-height:24px; font-size:12px; font-weight:600; }
-.dsh-uak-eyeButton { width:28px; height:24px; padding:0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); cursor:pointer; }
+.dsh-uak-eyeButton { width:28px; height:24px; padding:0; border:0; background:transparent; color:var(--dsm-text-secondary); cursor:pointer; }
 .dsh-uak-keyLine { display:flex; align-items:center; gap:7px; }
 .dsh-uak-keyLine .dsh-uak-authInput { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-groupTabs { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
@@ -1290,11 +1461,17 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 .dsh-uak-authActions { flex-wrap:nowrap; overflow-x:auto; padding-top:2px; }
 .dsh-uak-authActions > * { flex:none; }
 .dsh-uak-authLink { display:inline-flex; align-items:center; text-decoration:none; }
-.dsh-uak-authInput { box-sizing:border-box; min-width:0; flex:1; padding:5px 9px; border:1px solid var(--dsw-alias-border-l2); border-radius:6px; background:var(--dsw-alias-bg-sunken,transparent); color:var(--dsw-alias-label-primary); font:inherit; font-size:12px; }
+.dsh-uak-authInput { box-sizing:border-box; min-width:0; flex:1; padding:5px 9px; border:1px solid var(--dsm-border); border-radius:6px; background:var(--dsm-surface); color:var(--dsm-text); font:inherit; font-size:12px; }
+.dsh-uak-authInput:focus-visible { border-color:var(--dsm-accent); outline:2px solid var(--dsm-accent); outline-offset:-1px; }
 .dsh-uak-authArea { min-height:64px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
 .dsh-uak-authCode { font:600 15px/20px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.08em; }
-.dsh-uak-authError { color:#e0433f; font-size:12px; line-height:17px; }
-.dsh-uak-authEmpty { padding:12px; color:var(--dsw-alias-label-tertiary); font-size:12px; }
+.dsh-uak-authError { color:var(--dsm-bad); font-size:12px; line-height:17px; }
+.dsh-uak-authEmpty { padding:12px; color:var(--dsm-text-caption); font-size:12px; }
+@media (max-width: 640px) {
+    .dsh-uak-authActions { flex-wrap:wrap; }
+    .dsh-uak-summaryQuota { flex-wrap:wrap; white-space:normal; }
+    .dsh-uak-summaryResetCaption { flex:0 0 100%; text-align:left; }
+}
 `;
 
         function VendorRow(props) {
@@ -1879,7 +2056,7 @@ const STYLE_TAG_ID = "dsh-subscription-management/inline.css";
                 tag.dataset.pluginCss = STYLE_TAG_ID;
                 document.head.appendChild(tag);
             }
-            const css = [balanceCss, authCss].join("\n");
+            const css = [THEME_VARS, balanceCss, authCss, CONTINUE_NOTICE_CSS].join("\\n");
             if (tag.textContent !== css) tag.textContent = css;
             return () => { if (tag.isConnected) tag.remove(); };
         }
@@ -1947,6 +2124,12 @@ const BALANCE_SLOT = "sidebar.footer.action";
             } catch (error) {
                 console.warn("[dsh-subscription-management] mount skipped:", error);
             }
+            try {
+                if (typeof ctx.effect === "function") ctx.effect(() => mountContinueNoticeFix());
+                else mountContinueNoticeFix();
+            } catch (error) {
+                console.warn("[dsh-subscription-management] continue-notice repair skipped:", error);
+            }
         };
 
         const Config = {
@@ -1983,7 +2166,12 @@ const BALANCE_SLOT = "sidebar.footer.action";
                 vendorForModel,
                 activeModelLabel,
                 runningSessionIds,
-                endedRunningSessions
+                endedRunningSessions,
+                splitContinueNoticeText,
+                isContinueNotice,
+                markContinueNotice,
+                CONTINUE_NOTICE_CSS,
+                THEME_VARS
             };
         }
         //#endregion

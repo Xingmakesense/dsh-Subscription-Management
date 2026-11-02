@@ -23,6 +23,7 @@ const icon = readFileSync(new URL("./icon.svg", import.meta.url), "utf8");
     "client/runtime.js",
     "client/options.js",
     "client/subscription-catalog.js",
+    "client/theme.js",
     "client/quota.js",
     "client/deepseek-balance.js",
     "client/balance-card.js",
@@ -68,6 +69,9 @@ const icon = readFileSync(new URL("./icon.svg", import.meta.url), "utf8");
     assert.equal(client.includes('"settings.section"'), true, "subscription settings entry missing");
     assert.equal(client.includes('"conversation.input.right"'), false, "unrelated slider must not load");
     assert.equal(client.includes("SubscriptionAuthSettings"), true, "subscription settings component missing");
+    assert.equal(client.includes("THEME_VARS"), true, "theme contract must ship in the client bundle");
+    assert.equal(client.includes("data-dsm-continue-notice"), true, "auto-continue notice repair missing");
+    assert.equal(client.includes("--dsm-surface"), true, "theme surface variable missing");
     assert.equal(client.includes("useSessions"), true, "turn-end refresh must observe sessions");
     assert.equal(client.includes("autoStart"), true, "initialization must be explicitly controlled");
     assert.equal(client.includes("initialRequested"), true, "initial subscription request must be deduplicated");

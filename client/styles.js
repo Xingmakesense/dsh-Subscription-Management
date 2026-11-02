@@ -8,7 +8,7 @@
                 tag.dataset.pluginCss = STYLE_TAG_ID;
                 document.head.appendChild(tag);
             }
-            const css = [balanceCss, authCss].join("\n");
+            const css = [THEME_VARS, balanceCss, authCss, CONTINUE_NOTICE_CSS].join("\\n");
             if (tag.textContent !== css) tag.textContent = css;
             return () => { if (tag.isConnected) tag.remove(); };
         }

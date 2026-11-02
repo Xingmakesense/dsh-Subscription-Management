@@ -36,7 +36,10 @@ const {
     vendorForModel,
     activeModelLabel,
     runningSessionIds,
-    endedRunningSessions
+    endedRunningSessions,
+    splitContinueNoticeText,
+    CONTINUE_NOTICE_CSS,
+    THEME_VARS
 } = module.__test;
 
 // G. Independent enable switch and registration without unrelated features.
@@ -382,6 +385,28 @@ const {
     assert.equal(endedRunningSessions("a,b", "b"), true, "a stopped session must trigger refresh");
     assert.equal(endedRunningSessions("a", "a"), false, "an unchanged running set must not refresh");
     assert.equal(endedRunningSessions("a", ""), true, "the final turn end must trigger refresh");
+}
+
+// Theme contract and auto-continue notice repair.
+{
+    for (const name of ["--dsm-text", "--dsm-border", "--dsm-surface", "--dsm-ok", "--dsm-bad"]) {
+        assert.ok(THEME_VARS.includes(name), `${name} must be defined for both themes`);
+    }
+    assert.ok(THEME_VARS.includes("prefers-color-scheme: dark"), "dark theme variant must be defined");
+    assert.ok(THEME_VARS.includes("var(--dsw-alias-label-primary"), "theme tokens must keep harness fallbacks");
+    assert.ok(CONTINUE_NOTICE_CSS.includes("background: #000000 !important"), "notice must stay black");
+    assert.ok(CONTINUE_NOTICE_CSS.includes("color: #ffffff !important"), "notice text must stay white");
+    assert.ok(CONTINUE_NOTICE_CSS.includes("data-dsm-failure-code"), "failure code must be selectable for red");
+
+    const split = splitContinueNoticeText("自动续轮 第 1/6 次 · 故障码 TIMEOUT：模型请求超时");
+    assert.equal(split.code, "TIMEOUT");
+    assert.equal(split.parts.filter((part) => part.code).map((part) => part.value).join(""), "TIMEOUT");
+    assert.equal(split.parts.map((part) => part.value).join(""), "自动续轮 第 1/6 次 · 故障码 TIMEOUT：模型请求超时");
+    const plain = splitContinueNoticeText("自动续轮已停止");
+    assert.equal(plain.code, undefined);
+    assert.deepEqual(plain.parts, [{ value: "自动续轮已停止", code: false }]);
+    const multiline = splitContinueNoticeText("自动续轮 第 2/3 次 · 故障码 RATE_LIMIT：服务暂时限流");
+    assert.equal(multiline.code, "RATE_LIMIT");
 }
 
 console.log("client subscription checks passed");

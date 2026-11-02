@@ -59,6 +59,12 @@
             } catch (error) {
                 console.warn("[dsh-subscription-management] mount skipped:", error);
             }
+            try {
+                if (typeof ctx.effect === "function") ctx.effect(() => mountContinueNoticeFix());
+                else mountContinueNoticeFix();
+            } catch (error) {
+                console.warn("[dsh-subscription-management] continue-notice repair skipped:", error);
+            }
         };
 
         const Config = {
@@ -95,6 +101,11 @@
                 vendorForModel,
                 activeModelLabel,
                 runningSessionIds,
-                endedRunningSessions
+                endedRunningSessions,
+                splitContinueNoticeText,
+                isContinueNotice,
+                markContinueNotice,
+                CONTINUE_NOTICE_CSS,
+                THEME_VARS
             };
         }
