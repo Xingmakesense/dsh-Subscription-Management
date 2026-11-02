@@ -17,7 +17,7 @@ import {
 import { usageTest } from "./subscriptions/usage.js";
 import { subscriptionHandlerTest } from "./subscriptions/index.js";
 
-export const ACCOUNT_CHANNEL = "/utility-appearance-kit";
+export const ACCOUNT_CHANNEL = "/dsh-subscription-management";
 const DEEPSEEK_BALANCE_URL = "https://api.deepseek.com/user/balance";
 const DEEPSEEK_TIMEOUT_MS = 12_000;
 

@@ -1,6 +1,6 @@
 # dsh-Subscription-Management
 
-> 版本 `1.0.5` · 需要 DSH `>= 0.2.1-rc.2`
+> 版本 `1.0.6` · 需要 DSH `>= 0.2.1-rc.2`
 
 独立的多厂商订阅管理与模型接入插件：左侧栏显示真实订阅额度与 DeepSeek 余额/今日用量，设置页提供一行一个厂商的订阅认证。模型发现、图片能力、上下文窗口与思考强度通过 DSH 原生模型设置和模型菜单管理；不包含推理滑条、峰谷或节假日功能。
 
@@ -15,8 +15,7 @@
 - Protocom、OpenCode Go、Command Code、ClinePass 通过 DSH LLM seam 提供模型；支持图片输入、上下文档位和按模型划分的 Effort，不安装额外的长时断线重试策略。
 - 认证完成后自动启用对应原生 provider 分组，为未设置的上下文写入默认 1M，并按模型实际能力配置图片输入；Effort 词表和默认值直接来自各模型元数据。
 - 订阅页顶部提供 DSH 原生模型设置入口说明，已有自定义上下文或视觉设置不会被自动配置覆盖。
-- 全部界面使用 DSH 主题变量并自带浅色/深色兜底，可与 Utility-Appearance-Kit 同时安装；红绿状态色独立于主题。
-- 自动续轮提示条（由 `dsh-cockpit` 提供）固定为黑底白字，故障码标红；其他提示条不受影响。
+- RPC 与认证事件使用插件自己的 `/dsh-subscription-management` 和 `dsh-subscription-management:auth` 命名，不再占用 Utility-Appearance-Kit 或其他插件的接口。
 
 ## 认证与用量支持
 

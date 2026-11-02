@@ -137,15 +137,13 @@
     min-width: 0;
     max-width: 100%;
     padding: 5px 6px;
-    border: 1px solid var(--dsm-border);
+    border: 1px solid var(--dsw-alias-border-l2);
     border-radius: var(--dsw-radius-md, 8px);
-    background: var(--dsm-surface);
-    color: var(--dsm-text-secondary);
+    background: var(--dsw-alias-bg-layer-1, transparent);
+    color: var(--dsw-alias-label-secondary);
     font-size: 11px;
     line-height: 15px;
-    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
-.dsh-uak-balanceCard:hover { border-color: var(--dsm-accent); }
 .dsh-uak-balanceContext {
     display: flex;
     min-width: 0;
@@ -155,7 +153,7 @@
 .dsh-uak-balanceModel {
     min-width: 0;
     overflow: hidden;
-    color: var(--dsm-text);
+    color: var(--dsw-alias-label-primary);
     font-size: 12px;
     font-weight: 600;
     text-overflow: ellipsis;
@@ -166,14 +164,14 @@
     max-width: 50%;
     margin-left: auto;
     overflow: hidden;
-    color: var(--dsm-text-caption);
+    color: var(--dsw-alias-label-caption);
     font-size: 10px;
     text-align: right;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-balancePlan[data-tone=connected] { color: var(--dsm-ok); }
-.dsh-uak-balancePlan[data-tone=error] { color: var(--dsm-bad); }
+.dsh-uak-balancePlan[data-tone=connected] { color: #2fa24c; }
+.dsh-uak-balancePlan[data-tone=error] { color: #e0433f; }
 .dsh-uak-balanceRings {
     display: flex;
     flex-wrap: nowrap;
@@ -197,7 +195,7 @@
 }
 .dsh-uak-quotaName {
     overflow: hidden;
-    color: var(--dsm-text-secondary);
+    color: var(--dsw-alias-label-secondary);
     font-size: 12px;
     line-height: 16px;
     text-overflow: ellipsis;
@@ -218,8 +216,8 @@
     background: var(--dsw-alias-label-secondary);
     transition: width .2s ease;
 }
-.dsh-uak-quotaFill[data-tone=ok] { background: var(--dsm-ok); }
-.dsh-uak-quotaFill[data-tone=low] { background: var(--dsm-bad); }
+.dsh-uak-quotaFill[data-tone=ok] { background: #2fa24c; }
+.dsh-uak-quotaFill[data-tone=low] { background: #e0433f; }
 .dsh-uak-ringItem {
     display: flex;
     min-width: 0;
@@ -229,19 +227,19 @@
     gap: 4px;
 }
 .dsh-uak-ringValue {
-    color: var(--dsm-text);
+    color: var(--dsw-alias-label-primary);
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     line-height: 16px;
     text-align: right;
 }
-.dsh-uak-ringValue[data-tone=ok] { color: var(--dsm-ok); }
-.dsh-uak-ringValue[data-tone=low] { color: var(--dsm-bad); }
+.dsh-uak-ringValue[data-tone=ok] { color: #2fa24c; }
+.dsh-uak-ringValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-ringLabel {
     max-width: 100%;
     overflow: hidden;
-    color: var(--dsm-text);
+    color: var(--dsw-alias-label-primary);
     font-size: 10px;
     line-height: 14px;
     text-overflow: ellipsis;
@@ -261,21 +259,21 @@
     gap: 4px;
 }
 .dsh-uak-statLabel {
-    color: var(--dsm-text);
+    color: var(--dsw-alias-label-primary);
     font-size: 10px;
     line-height: 14px;
 }
 .dsh-uak-statValue {
     max-width: 100%;
     overflow: hidden;
-    color: var(--dsm-text);
+    color: var(--dsw-alias-label-primary);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.dsh-uak-statValue[data-tone=low] { color: var(--dsm-bad); }
+.dsh-uak-statValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-balanceNarrow {
     width: auto;
     flex: 0 1 auto;

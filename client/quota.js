@@ -1,7 +1,9 @@
         // Kimi subscription quota. Data comes directly from this plugin's Host
         // route, which owns the Kimi usage request. No sibling plugin RPC is used.
-        const ACCOUNT_CHANNEL = "/utility-appearance-kit";
-        const KIMI_AUTH_EVENT = "utility-appearance-kit:kimi-auth";
+        // Both the RPC route and the browser auth event belong exclusively to
+        // dsh-subscription-management; no sibling plugin namespace is reused.
+        const ACCOUNT_CHANNEL = "/dsh-subscription-management";
+        const KIMI_AUTH_EVENT = "dsh-subscription-management:auth";
         const QUOTA_WINDOW_SECONDS = Object.freeze({ minute: 60, hour: 3600, day: 86400, week: 604800, month: 2678400 });
         const QUOTA_UNKNOWN = "未提供";
 
