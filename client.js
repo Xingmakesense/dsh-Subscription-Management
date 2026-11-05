@@ -1024,6 +1024,31 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             return [provider, model].filter((part) => typeof part === "string" && part.length > 0).join(" ") || undefined;
         }
 
+        /**
+         * Automatic refresh cadence for the sidebar card.
+         *
+         * The timer ticks once a minute and the guard decides whether the
+         * five-minute window has actually elapsed, so a background tab that
+         * was throttled still refreshes as soon as it becomes visible again.
+         */
+        const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+        const AUTO_REFRESH_TICK_MS = 60 * 1000;
+
+        /**
+         * Whether the periodic refresh should fire now.
+         *
+         * @param {{ now?: number, lastAt?: number, hidden?: boolean, intervalMs?: number }} input
+         * @returns {boolean} `true` only when visible and the interval elapsed.
+         */
+        function shouldAutoRefresh({ now = Date.now(), lastAt, hidden = false, intervalMs = AUTO_REFRESH_INTERVAL_MS } = {}) {
+            if (hidden) return false;
+            if (!Number.isFinite(lastAt)) return false;
+            if (!Number.isFinite(now)) return false;
+            // A clock move backwards must not stall the timer forever.
+            if (now <= lastAt) return now < lastAt;
+            return now - lastAt >= intervalMs;
+        }
+
         function BalanceCard({ rpc, wide, useSessions }) {
             const [kimiState, refreshKimi] = useQuotaController(rpc, { autoStart: false });
             const [deepState, refreshDeep] = useDeepSeekController(rpc);
@@ -1033,7 +1058,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             const subscriberVendor = react.useMemo(() => readActiveVendor(), []);
             const busy = ["loading", "refreshing"].includes(kimiState.status)
                 || ["loading", "refreshing"].includes(deepState.status);
+            const lastRefreshAt = react.useRef(Date.now());
+            const busyRef = react.useRef(busy);
+            busyRef.current = busy;
             const refreshAll = react.useCallback(() => {
+                lastRefreshAt.current = Date.now();
                 refreshKimi(true, preferredVendor.current);
                 refreshDeep(true);
             }, [refreshKimi, refreshDeep]);
@@ -1060,6 +1089,19 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             react.useEffect(() => {
                 initialRequested.current = false;
             }, [rpc]);
+            // Five-minute cadence: one ticker for the card, skipped while the
+            // page is hidden or a request is still in flight. A manual refresh
+            // or a turn-end refresh resets the window through `refreshAll`.
+            react.useEffect(() => {
+                const timer = setInterval(() => {
+                    const hidden = typeof document !== "undefined" && document.hidden === true;
+                    if (busyRef.current) return;
+                    if (!shouldAutoRefresh({ lastAt: lastRefreshAt.current, hidden })) return;
+                    refreshAll();
+                }, AUTO_REFRESH_TICK_MS);
+                if (typeof timer?.unref === "function") timer.unref();
+                return () => clearInterval(timer);
+            }, [refreshAll]);
             // One initialization request. Unknown models keep the last vendor and
             // never trigger a refresh; a known model change switches exactly once.
             react.useEffect(() => {
@@ -1985,7 +2027,10 @@ const BALANCE_SLOT = "sidebar.footer.action";
                 vendorForModel,
                 activeModelLabel,
                 runningSessionIds,
-                endedRunningSessions
+                endedRunningSessions,
+                AUTO_REFRESH_INTERVAL_MS,
+                AUTO_REFRESH_TICK_MS,
+                shouldAutoRefresh
             };
         }
         //#endregion

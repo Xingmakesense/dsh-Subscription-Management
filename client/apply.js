@@ -95,6 +95,9 @@
                 vendorForModel,
                 activeModelLabel,
                 runningSessionIds,
-                endedRunningSessions
+                endedRunningSessions,
+                AUTO_REFRESH_INTERVAL_MS,
+                AUTO_REFRESH_TICK_MS,
+                shouldAutoRefresh
             };
         }

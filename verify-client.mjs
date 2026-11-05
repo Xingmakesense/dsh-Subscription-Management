@@ -36,7 +36,10 @@ const {
     vendorForModel,
     activeModelLabel,
     runningSessionIds,
-    endedRunningSessions
+    endedRunningSessions,
+    AUTO_REFRESH_INTERVAL_MS,
+    AUTO_REFRESH_TICK_MS,
+    shouldAutoRefresh
 } = module.__test;
 
 // G. Independent enable switch and registration without unrelated features.
@@ -382,6 +385,30 @@ const {
     assert.equal(endedRunningSessions("a,b", "b"), true, "a stopped session must trigger refresh");
     assert.equal(endedRunningSessions("a", "a"), false, "an unchanged running set must not refresh");
     assert.equal(endedRunningSessions("a", ""), true, "the final turn end must trigger refresh");
+}
+
+// J. Five-minute auto refresh: the ticker's decision function.
+{
+    assert.equal(AUTO_REFRESH_INTERVAL_MS, 5 * 60 * 1000, "the card refreshes every five minutes");
+    assert.equal(AUTO_REFRESH_TICK_MS, 60 * 1000, "the ticker wakes once a minute");
+    assert.ok(AUTO_REFRESH_INTERVAL_MS > AUTO_REFRESH_TICK_MS, "a tick must not be longer than the interval");
+
+    const base = Date.parse("2026-11-05T12:00:00.000Z");
+    assert.equal(shouldAutoRefresh({ now: base, lastAt: base }), false, "no refresh right after a request");
+    assert.equal(shouldAutoRefresh({ now: base + 1000, lastAt: base }), false, "one second is not five minutes");
+    assert.equal(shouldAutoRefresh({ now: base + AUTO_REFRESH_INTERVAL_MS - 1, lastAt: base }), false,
+        "one millisecond short of the interval must not refresh");
+    assert.equal(shouldAutoRefresh({ now: base + AUTO_REFRESH_INTERVAL_MS, lastAt: base }), true,
+        "the exact interval boundary refreshes");
+    assert.equal(shouldAutoRefresh({ now: base + 3 * AUTO_REFRESH_INTERVAL_MS, lastAt: base }), true,
+        "a throttled background tab refreshes once it returns");
+    assert.equal(shouldAutoRefresh({ now: base + 10 * AUTO_REFRESH_INTERVAL_MS, lastAt: base, hidden: true }), false,
+        "a hidden page never polls");
+    assert.equal(shouldAutoRefresh({ now: base, hidden: false }), false,
+        "without a baseline the first request owns the window");
+    assert.equal(shouldAutoRefresh({ now: Number.NaN, lastAt: base }), false, "an unreadable clock does not refresh");
+    assert.equal(shouldAutoRefresh({ now: base - 60_000, lastAt: base }), true,
+        "a backwards clock jump still retries rather than stalling forever");
 }
 
 console.log("client subscription checks passed");
