@@ -52,6 +52,7 @@ const icon = readFileSync(new URL("./icon.svg", import.meta.url), "utf8");
     "verify-host.cjs",
     "verify-client.mjs",
     "verify-subscriptions.mjs",
+    "verify-channel.mjs",
     "verify-compat.mjs"
 ]) {
         assert.equal(manifest.files.includes(file), true, file + " must stay in the packed files");
@@ -90,6 +91,13 @@ const icon = readFileSync(new URL("./icon.svg", import.meta.url), "utf8");
     assert.equal(hostSubscriptions.includes("validationInFlight"), true, "validation single-flight missing");
     assert.equal(hostSource.includes("/kimi-subscription"), false, "must not depend on the Kimi plugin channel");
     assert.equal(hostSource.includes("dsh-whale"), false, "must not depend on the whale-widget route");
+    // The channel rides the Host webServer prefix. The removed rewrite of
+    // Connection's private fiber store broke against cordis 4.1.0 (HTTP 405).
+    assert.equal(hostSource.includes("fiber.store"), false, "must not touch Connection's private fiber store");
+    assert.equal(hostSource.includes("rpc.handle"), false, "must not borrow Connection's rpc registry");
+    assert.equal(hostAccounts.includes('kind: "prefix"'), true, "Host must claim a webServer prefix route");
+    assert.equal(hostAccounts.includes("requestRejection"), true, "the route must keep the Connection trust fence");
+    assert.equal(hostAccounts.includes("recordStatus"), true, "route registration must leave a diagnostic breadcrumb");
 }
 
 function asarPath() {
