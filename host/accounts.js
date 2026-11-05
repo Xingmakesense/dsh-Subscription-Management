@@ -4,7 +4,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { cachePath, log } from "./status.js";
+import { cachePath, log, recordStatus } from "./status.js";
 import { requestJson } from "./subscriptions/http.js";
 import { createSubscriptionHandler, ok } from "./subscriptions/index.js";
 import { SUBSCRIPTION_VENDORS } from "./subscriptions/catalog.js";
@@ -204,28 +204,148 @@ export function createHandler(ctx, scope, runtime) {
     };
 }
 
-function bindConnectionWebServer(ctx, webServer) {
-    try {
-        const entry = [...ctx.loader.entries()].find((item) =>
-            item.options?.id === "connection"
-            && item.options?.name === "@deepseek-ai/dsh-client-connection");
-        if (entry === undefined) return true;
-        const fiber = entry.fiber;
-        if (!fiber?.inject || !fiber.store) return false;
-        if (fiber.store.webServer) return true;
-        if (!("webServer" in fiber.inject)) fiber.inject.webServer = null;
-        if (typeof fiber._checkImpl === "function") fiber._checkImpl("webServer");
-        if (fiber._store?.webServer) {
-            fiber.store.webServer = fiber._store.webServer;
-            return true;
-        }
-        const impl = { name: "webServer", value: webServer, fiber };
-        fiber.store.webServer = impl;
-        if (fiber._store) fiber._store.webServer = impl;
-        return true;
-    } catch {
-        return false;
+const ENDPOINT_SEGMENT = /^[A-Za-z0-9_$.-]+$/u;
+const RPC_BODY_LIMIT = 1024 * 1024;
+
+/** The RPC endpoint inside this plugin's channel, or `undefined` for another path. */
+export function endpointOf(channel, pathname) {
+    if (typeof pathname !== "string" || !pathname.startsWith(`${channel}/`)) return undefined;
+    const endpoint = pathname.slice(channel.length + 1);
+    if (endpoint.length === 0) return undefined;
+    return endpoint.split("/").every((segment) =>
+        segment !== "." && segment !== ".." && ENDPOINT_SEGMENT.test(segment))
+        ? endpoint
+        : undefined;
+}
+
+function sendJson(response, status, body, headers = {}) {
+    const text = JSON.stringify(body);
+    response.writeHead(status, {
+        "content-type": "application/json; charset=utf-8",
+        "content-length": Buffer.byteLength(text),
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+        ...headers
+    });
+    response.end(text);
+}
+
+async function readBody(request, limit = RPC_BODY_LIMIT) {
+    if (request === null || typeof request !== "object") return undefined;
+    const declared = Number(request.headers?.["content-length"]);
+    if (Number.isFinite(declared) && declared > limit) return undefined;
+    const chunks = [];
+    let received = 0;
+    for await (const chunk of request) {
+        const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+        received += buffer.byteLength;
+        if (received > limit) return undefined;
+        chunks.push(buffer);
     }
+    return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Build this plugin's Connection-compatible RPC route.
+ *
+ * The plugin owns its prefix on the Host `webServer` instead of borrowing
+ * Connection internals; `reject` keeps the Host/Origin and browser-session
+ * fence by returning a status code (403/401) or `undefined` to admit.
+ *
+ * @param {{ handler: (endpoint: string, payload: unknown) => Promise<unknown>, reject: (request: object) => number | undefined, channel?: string }} options
+ * @returns {(request: object, response: object) => Promise<void>} HTTP handler.
+ */
+export function createAccountRoute(options) {
+    const channel = options.channel ?? ACCOUNT_CHANNEL;
+    const handler = options.handler;
+    const reject = options.reject;
+    return async function accountRoute(request, response) {
+        // Admit first: an unauthenticated caller must not learn which endpoints
+        // exist, and the Connection fence is never bypassed by method probing.
+        const rejection = reject === undefined ? undefined : reject(request);
+        if (rejection !== undefined && rejection !== null) {
+            sendJson(response, Number.isFinite(rejection) ? rejection : 503, {
+                ok: false,
+                error: { code: "unauthorized", message: "request rejected", details: {} }
+            });
+            return;
+        }
+        if (request.method !== "POST") {
+            sendJson(response, 405, { ok: false, error: { code: "method-not-allowed", message: "POST required", details: {} } }, { allow: "POST" });
+            return;
+        }
+        const contentType = request.headers?.["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
+        if (contentType !== "application/json") {
+            sendJson(response, 415, { ok: false, error: { code: "unsupported-media-type", message: "content type must be application/json", details: {} } });
+            return;
+        }
+        let pathname;
+        try {
+            pathname = new URL(request.url ?? "/", "http://dsh.internal").pathname;
+        } catch {
+            sendJson(response, 400, { ok: false, error: { code: "bad-request", message: "invalid request URL", details: {} } });
+            return;
+        }
+        const endpoint = endpointOf(channel, pathname);
+        if (endpoint === undefined) {
+            sendJson(response, 404, { ok: false, error: { code: "not-found", message: "unknown subscription endpoint", details: {} } });
+            return;
+        }
+        const raw = await readBody(request);
+        if (raw === undefined) {
+            sendJson(response, 413, { ok: false, error: { code: "payload-too-large", message: "request body exceeds the subscription RPC limit", details: {} } });
+            return;
+        }
+        let envelope;
+        try {
+            envelope = JSON.parse(raw);
+        } catch {
+            sendJson(response, 400, { ok: false, error: { code: "bad-request", message: "body is not JSON", details: {} } });
+            return;
+        }
+        if (envelope === null || typeof envelope !== "object" || typeof envelope.rpcId !== "string") {
+            sendJson(response, 400, { ok: false, error: { code: "bad-request", message: "invalid client-request message", details: {} } });
+            return;
+        }
+        if (envelope.method !== endpoint) {
+            sendJson(response, 200, {
+                type: "server-response",
+                rpcId: envelope.rpcId,
+                result: {
+                    ok: false,
+                    error: {
+                        code: "gateway/bad-request",
+                        message: `method ${JSON.stringify(envelope.method)} does not match endpoint ${JSON.stringify(endpoint)}`,
+                        details: { issues: [] }
+                    }
+                }
+            });
+            return;
+        }
+        try {
+            const result = await handler(endpoint, envelope.payload);
+            sendJson(response, 200, { type: "server-response", rpcId: envelope.rpcId, result });
+        } catch (error) {
+            log(options.ctx, "warn", `account RPC handler failed: ${error?.message ?? String(error)}`);
+            sendJson(response, 500, { ok: false, error: { code: "internal", message: "subscription handler failure", details: {} } });
+        }
+    };
+}
+
+function connectionRejection(scope) {
+    return (request) => {
+        const connection = typeof scope?.get === "function" ? scope.get("connection") : scope?.connection;
+        if (connection === null || connection === undefined || typeof connection.requestRejection !== "function") {
+            // Fail closed: without the Connection fence a loopback route would
+            // answer any web page that can reach this port.
+            return 503;
+        }
+        try {
+            return connection.requestRejection(request);
+        } catch {
+            return 503;
+        }
+    };
 }
 
 export const accountTest = Object.freeze({
@@ -236,6 +356,8 @@ export const accountTest = Object.freeze({
     SUBSCRIPTION_VENDORS,
     vendorCredentialName,
     createHandler,
+    createAccountRoute,
+    endpointOf,
     ...usageTest,
     ...credentialTest,
     ...subscriptionHandlerTest
@@ -243,21 +365,25 @@ export const accountTest = Object.freeze({
 
 export function installAccountData(ctx, runtime) {
     try {
-        ctx.inject(["webServer", "connection", "credentials", "loader"], (scope) => {
+        ctx.inject(["webServer", "credentials"], (scope) => {
             try {
                 scope.effect(() => {
-                    if (!bindConnectionWebServer(scope, scope.webServer)) {
-                        throw new Error("Connection fiber could not bind webServer");
-                    }
                     const attached = runtime?.attach(scope);
                     attached?.catch((error) => log(ctx, "warn", `provider runtime unavailable: ${error?.message ?? String(error)}`));
-                    return scope.connection.rpc.handle(
-                        ACCOUNT_CHANNEL,
-                        createHandler(ctx, scope, runtime),
-                        { authority: "loopback" }
-                    );
+                    const route = createAccountRoute({
+                        handler: createHandler(ctx, scope, runtime),
+                        reject: connectionRejection(scope)
+                    });
+                    const dispose = scope.webServer.register({
+                        kind: "prefix",
+                        path: ACCOUNT_CHANNEL,
+                        handler: route
+                    });
+                    recordStatus("plugin", { phase: "route-registered", channel: ACCOUNT_CHANNEL });
+                    return dispose;
                 });
             } catch (error) {
+                recordStatus("plugin", { phase: "route-error", error: String(error?.message ?? error) });
                 log(ctx, "warn", `account data route unavailable: ${error?.message ?? String(error)}`);
             }
         });
