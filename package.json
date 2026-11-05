@@ -1,6 +1,6 @@
 {
   "name": "dsh-subscription-management",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "dsh-Subscription-Management：多厂商订阅认证、额度卡片与 DeepSeek 余额/今日用量。 · Multi-vendor subscription authentication, quota card, and DeepSeek account balance.",
   "type": "module",
   "main": "host.js",
@@ -50,6 +50,7 @@
     "verify-client.mjs",
     "verify-subscriptions.mjs",
     "verify-provider-runtime.mjs",
+    "verify-channel.mjs",
     "verify-compat.mjs"
   ],
   "dsh": {
@@ -63,10 +64,10 @@
   "scripts": {
     "build:client": "node scripts/build-client.mjs",
     "check": "node scripts/build-client.mjs --check && node --check client.js && node --check host.js && node --check host/options.js && node --check host/status.js && node --check host/accounts.js && node --check host/subscriptions/catalog.js && node --check host/subscriptions/credentials.js && node --check host/subscriptions/http.js && node --check host/subscriptions/index.js && node --check host/subscriptions/kimi-oauth.js && node --check host/subscriptions/usage.js && node --check host/provider-runtime/index.js && node --check host/provider-runtime/telemetry-view.js && node --check scripts/build-client.mjs",
-    "test": "node scripts/build-client.mjs --check && node verify-host.cjs && node verify-client.mjs && node verify-subscriptions.mjs && node verify-provider-runtime.mjs && node verify-compat.mjs"
+    "test": "node scripts/build-client.mjs --check && node verify-host.cjs && node verify-client.mjs && node verify-subscriptions.mjs && node verify-provider-runtime.mjs && node verify-channel.mjs && node verify-compat.mjs"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/cordis": ">=4.0.4 <5",
     "@deepseek-ai/dsh-attachment": ">=0.1.7-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-credentials": ">=0.1.7-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-llm": ">=0.1.7-rc.2 <0.3.0-0",
@@ -90,5 +91,8 @@
     "deepseek"
   ],
   "author": "June M",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0"
+  }
 }

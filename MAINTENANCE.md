@@ -9,10 +9,10 @@
 - `host/subscriptions/kimi-oauth.js`：Kimi 设备授权状态机。
 - `host/subscriptions/usage.js`：真实只读验证、OAuth 刷新与用量解析。
 - `host/provider-runtime/`：DSH 原生 provider 注册、模型发现、额度服务与遥测投影；`protocom-api.js` 为上游 vendored 文件，作者许可证见同目录 `PROTOCOM-LICENSE`。
-- `host/accounts.js`：DeepSeek 余额与今日账本。
+- `host/accounts.js`：DeepSeek 余额与今日账本；Host RPC 前缀路由（`createAccountRoute`）与信封处理。
 - `subscriptions.json`：厂商目录唯一事实源，不得另写一份厂商清单。
 
-`client.js` 由 `scripts/build-client.mjs` 生成，不要直接编辑。修改 `client/*.js` 后必须重新构建并运行 `--check`。修改 provider runtime 后运行 `node verify-provider-runtime.mjs`，它用 fixture 覆盖 provider 注册、模型发现、额度缓存与遥测投影。
+`client.js` 由 `scripts/build-client.mjs` 生成，不要直接编辑。修改 `client/*.js` 后必须重新构建并运行 `--check`。修改 provider runtime 后运行 `node verify-provider-runtime.mjs`，它用 fixture 覆盖 provider 注册、模型发现、额度缓存与遥测投影。修改 RPC 通道或 `host/accounts.js` 后运行 `node verify-channel.mjs`。
 
 ## 不可破坏的约束
 
@@ -26,3 +26,5 @@
 8. 秘密只由 Host 持久化，API 管理不得恢复 localStorage 明文 Key。
 9. 本项目不得重新引入滑条、峰谷、节假日或档位引擎；这些仍由 Utility-Appearance-Kit 维护。
 10. 测试只能使用假凭据、临时目录和 HTTP fixture，禁止读取真实账户或调用真实厂商接口。
+11. 账户 RPC 只走公开接口：插件在 Host `webServer` 上注册自己的 `/dsh-subscription-management` 前缀路由，鉴权调用 `connection.requestRejection`，不得再读写 Connection 插件的 fiber 内部字段（`store`/`_store`/`inject`/`rpc.handle`）。cordis 4.1.0 已把 `Fiber.store` 改为 `committed`，旧写法会让注册静默失败、整条通道返回 HTTP 405。
+12. 鉴权只允许 fail-closed：`connection` 或 `requestRejection` 不可用时直接回 503，不得放行。

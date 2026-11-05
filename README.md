@@ -1,6 +1,6 @@
 # dsh-Subscription-Management
 
-> 版本 `1.0.6` · 需要 DSH `>= 0.2.1-rc.2`
+> 版本 `1.0.7` · 需要 DSH `>= 0.2.1-rc.2`
 
 独立的多厂商订阅管理与模型接入插件：左侧栏显示真实订阅额度与 DeepSeek 余额/今日用量，设置页提供一行一个厂商的订阅认证。模型发现、图片能力、上下文窗口与思考强度通过 DSH 原生模型设置和模型菜单管理；不包含推理滑条、峰谷或节假日功能。
 
@@ -75,10 +75,11 @@ node scripts/build-client.mjs --check
 
 ## 兼容性
 
-- DSH `>= 0.2.1-rc.2`，与 `package.json` 的 `engines.dsh` 一致。
+- DSH `>= 0.2.1-rc.2`（本版本在 DSH `0.2.2-rc.1` 上验证），与 `package.json` 的 `engines.dsh` 一致。
+- `@deepseek-ai/cordis` 支持 `>= 4.0.4 <5`：Host RPC 通道只使用 Cordis 与 DSH 的公开接口（`webServer.register` + `connection.requestRejection`），不读取 Connection 插件的 fiber 内部字段。旧版对 `fiber.store` 的改写会在 cordis 4.1.0 上静默失败，表现为 `/dsh-subscription-management/auth/*` 返回 HTTP 405、卡片额度与余额全部显示 `—`。
 - Node.js `>= 18`：验证脚本使用内置 `fetch` / `Response`，不依赖额外 HTTP 库。
 - 运行时的 `@deepseek-ai/*` 服务由 DSH profile 提供；`dependencies` 中的 `@deepseek-ai/schemastery` 与 `eventsource-parser` 随插件安装。
-- 本仓库不包含 `node_modules`。运行 Host 与 provider runtime 的验证脚本时，需要能解析 `package.json` 中的依赖（在 DSH profile 内运行，或自行安装依赖）。
+- 本仓库不包含 `node_modules`。运行 Host 与 provider runtime 的验证脚本时，需要能解析 `package.json` 中的依赖（在 DSH profile 内运行，或 `pnpm install`）。
 
 ## 配置
 
@@ -91,7 +92,9 @@ node scripts/build-client.mjs --check
     enabled: false
 ```
 
-`enabled: false` 时不注册卡片、设置入口或账户 RPC，也不注入 `connection`。非法配置安全回退为禁用。
+`enabled: false` 时不注册卡片、设置入口或账户 RPC，也不注册 Host 路由。非法配置安全回退为禁用。
+
+账户 RPC 由插件自己在 Host `webServer` 上注册 `/dsh-subscription-management` 前缀路由：只接受 `POST` + `application/json` 的 `client-request` 信封，返回 `server-response`；每次请求先经 `connection.requestRejection` 做 Host/Origin 与浏览器会话校验，校验服务不可用时直接失败关闭（HTTP 503），不会放开 loopback 路由。
 
 ## 性能与存储
 
@@ -114,10 +117,11 @@ node verify-host.cjs                   # Host 配置归一化与入口契约
 node verify-client.mjs                 # 卡片布局、额度窗口与余额账本
 node verify-subscriptions.mjs          # 凭据、OAuth 刷新、用量解析与验证指纹
 node verify-provider-runtime.mjs       # provider 注册、模型发现、额度缓存与遥测投影
+node verify-channel.mjs                # Host RPC 前缀路由、信封契约与失败关闭
 node verify-compat.mjs                 # 与本机 DSH 版本的槽位/清单兼容性
 ```
 
-`pnpm test` 依次运行上述构建检查与五个验证脚本。脚本只使用假凭据、临时目录和 HTTP fixture；`verify-provider-runtime.mjs` 通过替换 `globalThis.fetch` 提供 Protocom、OpenCode Go、Command Code 与 ClinePass 的固定响应，验证 provider 注册、模型发现、Effort/视觉能力写入、作者额度缓存与遥测投影，不读取真实账号，也不请求真实厂商接口。
+`pnpm test` 依次运行上述构建检查与六个验证脚本。脚本只使用假凭据、临时目录和 HTTP fixture；`verify-provider-runtime.mjs` 通过替换 `globalThis.fetch` 提供 Protocom、OpenCode Go、Command Code 与 ClinePass 的固定响应，验证 provider 注册、模型发现、Effort/视觉能力写入、作者额度缓存与遥测投影，不读取真实账号，也不请求真实厂商接口。`verify-channel.mjs` 端到端驱动 `installAccountData`：断言插件在 `webServer` 上注册了前缀路由、`POST` 信封得到 200 与 `server-response`，并覆盖 405/415/404/400/413/401/503 分支。
 
 ## 已知限制
 
@@ -129,11 +133,11 @@ node verify-compat.mjs                 # 与本机 DSH 版本的槽位/清单兼
 ## 文件结构
 
 - `client/`：卡片、认证页、厂商目录和轮次刷新状态机。
-- `host/accounts.js`：DeepSeek 余额/今日账本与 RPC 入口。
+- `host/accounts.js`：DeepSeek 余额/今日账本、Host RPC 前缀路由与请求信封处理。
 - `host/subscriptions/`：凭据、CLI 导入、Kimi 设备 OAuth、HTTP、验证与用量适配器。
 - `host/provider-runtime/`：DSH 原生模型注册、作者额度服务接入和统一视图投影，以及源自 `dsh-protocom-api` 的 Host 协议与模型运行时；不包含其 Client/UI、Fusion 或自定义重试挂载。原作者 MIT 许可证保留在同目录。
 - `subscriptions.json`：唯一厂商目录，构建时注入 Client。
-- `verify-*.mjs` / `verify-host.cjs`：五个独立验证脚本，覆盖 Host、Client、订阅适配与 provider runtime。
+- `verify-*.mjs` / `verify-host.cjs`：六个独立验证脚本，覆盖 Host、Client、订阅适配、provider runtime 与 RPC 通道。
 
 ## 许可证
 
