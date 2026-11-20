@@ -1,4 +1,9 @@
-import { SUBSCRIPTION_VENDORS, requireSubscriptionVendor, vendorSupports } from "./catalog.js";
+import {
+    SUBSCRIPTION_VENDORS,
+    requireSubscriptionVendor,
+    vendorAllowsAutoModelSetup,
+    vendorSupports
+} from "./catalog.js";
 import {
     credentialFromInput,
     credentialIsExpired,
@@ -213,7 +218,7 @@ export function createSubscriptionHandler(scope, runtime) {
                 if (!vendorSupports(vendor, "api-key")) throw new Error(`${vendor.name} 不支持订阅 API Key`);
                 const status = await saveAndValidate(scope, vendor,
                     credentialFromInput(vendor, "api-key", input.apiKey), input.group, runtime);
-                if (status.configured && ["protocom", "opencode-go", "commandcode", "clinepass"].includes(vendor.id)) {
+                if (status.configured && vendorAllowsAutoModelSetup(vendor)) {
                     await runtime?.completeAuthentication(vendor.id, input.group);
                 }
                 return ok(status);
@@ -238,7 +243,7 @@ export function createSubscriptionHandler(scope, runtime) {
             if (endpoint === "auth/validate") {
                 const vendor = requireSubscriptionVendor(input.vendor);
                 const status = await validateAndReport(scope, vendor, input.group, runtime);
-                if (status.configured && ["protocom", "opencode-go", "commandcode", "clinepass"].includes(vendor.id)) {
+                if (status.configured && vendorAllowsAutoModelSetup(vendor)) {
                     await runtime?.completeAuthentication(vendor.id, input.group);
                 }
                 return ok(status);

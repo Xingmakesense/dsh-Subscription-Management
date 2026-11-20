@@ -1,5 +1,5 @@
 import z from "@deepseek-ai/schemastery";
-import { FAMILIES } from "./provider-runtime/protocom-api.js";
+import { ALL_FAMILIES } from "./provider-runtime/index.js";
 
 const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 
@@ -39,6 +39,6 @@ function providerSection(family) {
 export const Config = z.object({
     enabled: z.boolean().default(true),
     providers: z.object(Object.fromEntries(
-        FAMILIES.map((family) => [family.sectionKey, providerSection(family)])
+        ALL_FAMILIES.map((family) => [family.sectionKey, providerSection(family)])
     )).default({})
 });

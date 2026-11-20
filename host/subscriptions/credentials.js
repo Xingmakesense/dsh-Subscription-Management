@@ -187,6 +187,12 @@ export function cliCredentialCandidates(vendor, env = process.env, home = homedi
             return [nonEmpty(env.KILO_AUTH_FILE) ?? join(home, ".local", "share", "kilo", "auth.json")];
         case "kiro":
             return [nonEmpty(env.KIRO_AUTH_TOKEN_FILE) ?? join(home, ".aws", "sso", "cache", "kiro-auth-token.json")];
+        case "antigravity":
+            // agy keeps its consumer OAuth document here. On Windows the live
+            // credential normally lives in Credential Manager ("gemini:antigravity"),
+            // which this plugin never reads; paste that JSON instead.
+            return [nonEmpty(env.ANTIGRAVITY_TOKEN_FILE)
+                ?? join(home, ".gemini", "antigravity-cli", "antigravity-oauth-token")];
         default:
             return [];
     }
@@ -259,6 +265,25 @@ export function parseCliCredential(vendor, document, path = "") {
                 expires: document.expiresAt,
                 profileArn: nonEmpty(document.profileArn),
                 authMethod: nonEmpty(document.authMethod)
+            })
+        };
+    }
+    if (kind === "antigravity") {
+        // agy >= 1.1.15 writes {"token":{access_token,token_type,refresh_token,expiry},"auth_method":"consumer"};
+        // older/third-party writers use a flat document. Reading the nested
+        // object as a string produced "Bearer [object Object]" in the wild.
+        const nested = document.token;
+        const source = nested !== null && typeof nested === "object" && !Array.isArray(nested) ? nested : document;
+        return {
+            version: 1,
+            kind: "oauth",
+            source: "cli",
+            path,
+            secret: oauthSecret({
+                access: source.access_token ?? source.accessToken,
+                refresh: source.refresh_token ?? source.refreshToken ?? document.refresh_token,
+                expires: source.expiry ?? source.expiresAt ?? document.expiry,
+                authMethod: nonEmpty(document.auth_method)
             })
         };
     }
@@ -374,6 +399,10 @@ export function credentialFromInput(vendor, kind, input) {
                 parsed = JSON.parse(text);
             } catch {
                 if (vendor.id === "kiro") throw new SubscriptionCredentialError("Kiro 需要包含 profileArn 的 OAuth JSON");
+                if (vendor.id === "antigravity" && /^1\//u.test(text)) {
+                    throw new SubscriptionCredentialError(
+                        "Antigravity 的裸 refresh token 无法单独使用；请粘贴 agy 的完整 token JSON（含 access_token），或先用 agy 登录后导入文件");
+                }
                 parsed = { access_token: text };
             }
         }
@@ -407,6 +436,16 @@ export function credentialFromInput(vendor, kind, input) {
                 expires: parsed?.expiresAt ?? parsed?.expiry_date,
                 profileArn: nonEmpty(parsed?.profileArn),
                 authMethod: nonEmpty(parsed?.authMethod)
+            }) };
+        }
+        if (vendor.id === "antigravity") {
+            const nested = parsed?.token;
+            const source = nested !== null && typeof nested === "object" && !Array.isArray(nested) ? nested : parsed;
+            return { kind: "oauth", secret: oauthSecret({
+                access: source?.access_token ?? source?.accessToken,
+                refresh: source?.refresh_token ?? source?.refreshToken ?? parsed?.refresh_token,
+                expires: source?.expiry ?? source?.expiresAt ?? parsed?.expiry,
+                authMethod: nonEmpty(parsed?.auth_method)
             }) };
         }
         throw new SubscriptionCredentialError(`${vendor.name} 不支持手动 OAuth`, "UNSUPPORTED");

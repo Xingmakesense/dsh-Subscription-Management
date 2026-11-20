@@ -1,7 +1,7 @@
 {
   "name": "dsh-subscription-management",
-  "version": "1.0.8",
-  "description": "dsh-Subscription-Management：多厂商订阅认证、额度卡片与 DeepSeek 余额/今日用量。 · Multi-vendor subscription authentication, quota card, and DeepSeek account balance.",
+  "version": "1.2.0",
+  "description": "dsh-Subscription-Management：多厂商订阅认证、严格按提供商匹配的额度卡片，Claude/ChatGPT 订阅直挂原生 provider，以及 DeepSeek 余额/今日用量。",
   "type": "module",
   "main": "host.js",
   "exports": {
@@ -33,6 +33,7 @@
     "host/subscriptions/kimi-oauth.js",
     "host/subscriptions/usage.js",
     "host/provider-runtime/index.js",
+    "host/provider-runtime/subscription-oauth.js",
     "host/provider-runtime/telemetry-view.js",
     "host/provider-runtime/protocom-api.js",
     "host/provider-runtime/PROTOCOM-LICENSE",
@@ -40,6 +41,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "docs/QUOTA-SOURCES.md",
     "README.md",
     "MAINTENANCE.md",
     "UPLOAD-TO-GITHUB.md",
@@ -88,6 +90,8 @@
     "quota",
     "oauth",
     "kimi",
+    "mistral",
+    "antigravity",
     "deepseek"
   ],
   "author": "June M",

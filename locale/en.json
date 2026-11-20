@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "dsh-Subscription-Management",
-    "description": "Multi-vendor subscription authentication, real quota cards, and DeepSeek balance and daily usage."
+    "description": "Multi-vendor subscription authentication with provider-strict quota cards (Google Antigravity, Mistral amount-based budgets) and DeepSeek balance."
   }
 }

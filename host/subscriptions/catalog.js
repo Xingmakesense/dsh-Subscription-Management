@@ -27,3 +27,15 @@ export function optionalSubscriptionVendor(value) {
 export function vendorSupports(vendor, method) {
     return Array.isArray(vendor?.methods) && vendor.methods.includes(method);
 }
+
+/**
+ * Whether this plugin may write native model/provider settings after auth.
+ *
+ * Only `modelSetup: "auto"` vendors are served by the provider runtime mounted
+ * by this plugin. Official subscriptions whose own console issues subscription
+ * API keys ("manual") are never configured on the user's behalf: the user
+ * creates the key and configures models in DSH's native model settings.
+ */
+export function vendorAllowsAutoModelSetup(vendor) {
+    return vendor?.modelSetup === "auto";
+}

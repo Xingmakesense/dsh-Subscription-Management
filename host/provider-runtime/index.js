@@ -11,16 +11,24 @@ import {
     stripVariantId
 } from "./protocom-api.js";
 import { commandCodeUsageView, openCodeUsageView, protocomUsageView } from "./telemetry-view.js";
-import { subscriptionVendor } from "../subscriptions/catalog.js";
-import { resolveVendorCredential } from "../subscriptions/credentials.js";
+import { subscriptionVendor, vendorAllowsAutoModelSetup } from "../subscriptions/catalog.js";
+import { resolveVendorCredential, writeVendorCredential } from "../subscriptions/credentials.js";
+import { ensureFreshOAuth } from "../subscriptions/usage.js";
+import { OAUTH_ADAPTERS, OAUTH_FAMILIES } from "./subscription-oauth.js";
 
 const SETTINGS_NS = "dsh-subscription-management";
 const FAMILY_VENDORS = Object.freeze({
     "protocom-api": "protocom",
     "opencode-go": "opencode-go",
     commandcode: "commandcode",
-    clinepass: "clinepass"
+    clinepass: "clinepass",
+    // Subscription-login providers mounted by this plugin (no API key).
+    "claude-subscription": "claude",
+    "codex-subscription": "chatgpt"
 });
+
+/** Every family this plugin mounts: the four relay families plus OAuth subscriptions. */
+export const ALL_FAMILIES = Object.freeze([...FAMILIES, ...OAUTH_FAMILIES]);
 
 /** Keep the author's wire adapter but disable retries on these routes. */
 class SubscriptionAdapter extends ProtocomAdapter {
@@ -108,7 +116,10 @@ export function installProviderRuntime(ctx, readConfig) {
     let credentialScope;
     let syncPromise;
 
-    for (const family of FAMILIES) {
+    /** Codex routes need the account id from the credential on every request. */
+    const oauthAccountIds = new Map();
+
+    for (const family of ALL_FAMILIES) {
         const vendorId = FAMILY_VENDORS[family.ns];
         secrets.set(family.ns, new Map());
 
@@ -143,7 +154,42 @@ export function installProviderRuntime(ctx, readConfig) {
             cachedSecrets = configured;
             return cachedOptions;
         };
+        /**
+         * One live access token for a subscription login, refreshed when stale.
+         *
+         * A relay family reads the secret cached by `refreshCredentials`; an OAuth
+         * subscription re-reads its record on every request, because an access
+         * token expires silently between model calls.
+         */
+        const liveOAuthAccess = async () => {
+            const vendor = subscriptionVendor(vendorId);
+            if (vendor === undefined || credentialScope === undefined) {
+                throw new LlmError(`${family.label}: no subscription login is configured`, "MISSING_CREDENTIAL");
+            }
+            let record;
+            try {
+                record = await resolveVendorCredential(credentialScope, vendor);
+            } catch (error) {
+                throw new LlmError(`${family.label}: ${error?.message ?? "credential unavailable"}`, "MISSING_CREDENTIAL");
+            }
+            if (record === undefined || record.needsReconnect === true) {
+                throw new LlmError(`${family.label}: reconnect the subscription in Subscription Management`, "MISSING_CREDENTIAL");
+            }
+            try {
+                const fresh = await ensureFreshOAuth(vendor, record, {
+                    writeCredential: (next) => writeVendorCredential(credentialScope, vendor, next)
+                });
+                return fresh.access;
+            } catch (error) {
+                throw new LlmError(`${family.label}: ${error?.message ?? "OAuth token unavailable"}`, "MISSING_CREDENTIAL");
+            }
+        };
         const resolveApiKey = async (group) => {
+            if (family.oauth === true) {
+                const access = await liveOAuthAccess();
+                recentGroups.set(vendorId, group.key);
+                return access;
+            }
             const value = secrets.get(family.ns)?.get(group.key);
             if (value === undefined) {
                 throw new LlmError(
@@ -154,11 +200,18 @@ export function installProviderRuntime(ctx, readConfig) {
             recentGroups.set(vendorId, group.key);
             return value;
         };
-        const adapter = new SubscriptionAdapter({
+        const AdapterClass = OAUTH_ADAPTERS.get(family.ns) ?? SubscriptionAdapter;
+        const adapter = new AdapterClass({
             options,
             resolveApiKey,
             resolveAttachments: () => ctx.get("attachments"),
-            log: (message) => ctx.logger?.warn?.(message)
+            log: (message) => ctx.logger?.warn?.(message),
+            // The Codex consumer backend identifies the account out of band; the
+            // bearer token alone is not enough there.
+            requestHeadersFor: () => {
+                const accountId = oauthAccountIds.get(vendorId);
+                return accountId === undefined ? {} : { "chatgpt-account-id": accountId };
+            }
         });
         const telemetryHooks = {
             options,
@@ -175,16 +228,30 @@ export function installProviderRuntime(ctx, readConfig) {
         states.set(family.ns, { family, vendorId, rawSection, options, adapter, telemetry, registration: undefined });
     }
 
+    /** Marks an OAuth family as configured; the real token is read per request. */
+    const OAUTH_SENTINEL = "oauth-login";
+
     const refreshCredentials = async () => {
         if (credentialScope === undefined) return;
         await Promise.all([...states.values()].map(async (state) => {
             const vendor = subscriptionVendor(state.vendorId);
-            const record = vendor === undefined
-                ? undefined
-                : await resolveVendorCredential(credentialScope, vendor);
+            let record;
+            try {
+                record = vendor === undefined ? undefined : await resolveVendorCredential(credentialScope, vendor);
+            } catch {
+                // A CLI-linked file that moved must not break the whole sync.
+                record = undefined;
+            }
+            if (state.family.oauth === true) {
+                const accountId = record?.kind === "oauth" ? record.secret?.accountId : undefined;
+                if (typeof accountId === "string" && accountId.length > 0) oauthAccountIds.set(state.vendorId, accountId);
+                else oauthAccountIds.delete(state.vendorId);
+            }
             const next = new Map();
             for (const key of state.family.keys) {
-                const value = secretFor(record, state.vendorId, key);
+                const value = state.family.oauth === true
+                    ? (record !== undefined && record.needsReconnect !== true && record.kind === "oauth" ? OAUTH_SENTINEL : undefined)
+                    : secretFor(record, state.vendorId, key);
                 if (value !== undefined) next.set(key, value);
             }
             const previous = secrets.get(state.family.ns) ?? new Map();
@@ -271,10 +338,13 @@ export function installProviderRuntime(ctx, readConfig) {
         const nativeGroup = section.groups?.[key] ?? {};
         const ops = [{ op: "set", path: ["providers", state.family.sectionKey, "groups", key, "enabled"], value: true }];
         if (!Array.isArray(nativeGroup.contextLengths) || nativeGroup.contextLengths.length === 0) {
+            // Use the family's real ladder (a subscription login is not a 1M
+            // relay); the relay families keep their original 1M default.
+            const declared = state.family.defaults?.[key]?.contextLengths;
             ops.push({
                 op: "set",
                 path: ["providers", state.family.sectionKey, "groups", key, "contextLengths"],
-                value: [1_048_576]
+                value: Array.isArray(declared) && declared.length > 0 ? [...declared] : [1_048_576]
             });
         }
         const existingVision = section.visionModels ?? {};
@@ -300,6 +370,9 @@ export function installProviderRuntime(ctx, readConfig) {
     const configureAll = async (vendorId, requestedGroup) => {
         for (const state of states.values()) {
             if (vendorId !== undefined && state.vendorId !== vendorId) continue;
+            // Only the provider runtime mounted by this plugin writes native
+            // settings; official subscriptions keep their model setup manual.
+            if (!vendorAllowsAutoModelSetup(subscriptionVendor(state.vendorId))) continue;
             for (const key of state.family.keys) {
                 if (requestedGroup !== undefined && key !== requestedGroup) continue;
                 try {
@@ -354,6 +427,10 @@ export function installProviderRuntime(ctx, readConfig) {
         async completeAuthentication(vendorId, group) {
             await sync();
             await configureAll(vendorId, group);
+        },
+        /** True when this plugin is allowed to write native model settings. */
+        allowsAutoModelSetup(vendorId) {
+            return vendorAllowsAutoModelSetup(subscriptionVendor(vendorId));
         },
         fetchUsage: fetchAuthorUsage,
         currentGroup(vendorId) {

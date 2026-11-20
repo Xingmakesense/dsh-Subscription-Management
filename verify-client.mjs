@@ -34,7 +34,10 @@ const {
     reorderVendor,
     SUBSCRIPTION_VENDORS,
     vendorForModel,
+    vendorForProvider,
     activeModelLabel,
+    activeModelProvider,
+    quotaRowText,
     runningSessionIds,
     endedRunningSessions,
     AUTO_REFRESH_INTERVAL_MS,
@@ -183,15 +186,34 @@ const {
     assert.deepEqual(emptyCard.renderedSlots, []);
     assert.equal(balanceCardView({ status: "ready", usage }, { status: "error" }).accountState, "partial");
 
-    assert.equal(vendorForModel("gpt-5-codex"), "chatgpt");
-    assert.equal(vendorForModel("z.ai glm-4.6"), "glm");
-    assert.equal(vendorForModel("dashscope/qwen3"), "qwen");
-    assert.equal(vendorForModel("moonshot/kimi-k2"), "kimi");
-    assert.equal(vendorForModel("deepseek-flash"), undefined);
+    // A subscription is selected strictly by its provider route. Model names
+    // are never evidence: a third-party relay serving glm-4.6 must not switch
+    // the card to the Z.ai subscription plan.
+    assert.equal(vendorForModel("gpt-5-codex"), undefined, "a bare model name never selects a subscription");
+    assert.equal(vendorForModel("glm-4.6", "my-third-party-relay"), undefined,
+        "a relay that serves a GLM model is not the GLM coding plan");
+    assert.equal(vendorForModel("zhipu/glm-4.6", "openrouter"), undefined);
+    assert.equal(vendorForModel("glm-4.6", "z.ai"), "glm", "the exact provider route still selects the plan");
+    assert.equal(vendorForModel("glm-4.6", "ZAI"), "glm", "provider matching is case-insensitive");
+    assert.equal(vendorForModel("anything", "dashscope"), "qwen");
+    assert.equal(vendorForModel("kimi-k2", "moonshot"), "kimi");
+    assert.equal(vendorForModel(undefined, "protocom-codex"), "protocom");
+    assert.equal(vendorForModel("deepseek-flash", "deepseek"), undefined);
+    assert.equal(vendorForProvider("openai"), undefined, "a plain OpenAI key is not a ChatGPT subscription");
+    assert.equal(vendorForProvider("chatgpt"), "chatgpt");
+    assert.equal(vendorForProvider(""), undefined);
+    assert.equal(vendorForProvider(undefined), undefined);
     assert.equal(activeModelLabel({
         byId: { a: { id: "a", retainedBy: { mainView: 1 } } },
         projectionsBySession: { a: { values: { modelSelection: { next: { provider: "openai", model: "gpt-5" } } } } }
     }), "openai gpt-5");
+    assert.equal(activeModelProvider({
+        byId: { a: { id: "a", retainedBy: { mainView: 1 } } },
+        projectionsBySession: { a: { values: { modelSelection: { next: { provider: "z.ai", model: "glm-4.6" } } } } }
+    }), "z.ai");
+    // Equivalent amounts (Mistral) render money, not a percentage.
+    assert.equal(quotaRowText({ used: 10, limit: 40, unit: "amount", currency: "USD" }).includes("30"), true);
+    assert.equal(quotaRowText({ used: 25, limit: 100 }), "75%");
     assert.deepEqual(reorderVendor(["kimi", "glm", "qwen"], "qwen", "kimi"), ["qwen", "kimi", "glm"]);
     assert.equal(vendorOrder([]).length, SUBSCRIPTION_VENDORS.length);
     const localValues = new Map();
@@ -411,5 +433,99 @@ const {
         "a backwards clock jump still retries rather than stalling forever");
 }
 
-console.log("client subscription checks passed");
+// K. Both slot components render without throwing, including an expanded
+//    account panel with per-group details and an amount-valued budget.
+{
+    const fakeReactBase = (created, stateOverrides) => {
+        let stateIndex = 0;
+        return {
+            Fragment: Symbol.for("fragment"),
+            createElement(type, props, ...children) {
+                created.push({ type, props, children });
+                return { type, props, children };
+            },
+            useState: (initial) => {
+                stateIndex += 1;
+                const override = stateOverrides[stateIndex];
+                return [override === undefined ? (typeof initial === "function" ? initial() : initial) : override, () => {}];
+            },
+            useRef: (value) => ({ current: value }),
+            useMemo: (factory) => factory(),
+            useCallback: (callback) => callback,
+            useEffect: () => {},
+            useLayoutEffect: () => {}
+        };
+    };
+    const mount = (stateOverrides = {}) => {
+        const created = [];
+        const instance = captured.factory((id) => (id === "react" ? fakeReactBase(created, stateOverrides) : {}));
+        const registrations = [];
+        const slots = {
+            inject(_key, callback) { callback(); return () => {}; },
+            register(options, component) { registrations.push({ options, component }); return () => {}; }
+        };
+        const rpc = { call: async () => ({ ok: true, value: { vendors: {} } }) };
+        const ctx = {
+            effect: (fn) => fn(),
+            get: (service) => service === "connection" ? { rpc } : undefined,
+            inject(_services, callback) {
+                callback({ get: (service) => service === "slots" ? slots : service === "connection" ? { rpc } : undefined });
+                return { dispose() {} };
+            }
+        };
+        instance.apply(ctx, { enabled: true });
+        return { created, registrations };
+    };
 
+    const empty = mount();
+    assert.equal(empty.registrations.length, 2, "the plugin must register the card and the settings section");
+    const card = empty.registrations.find((entry) => entry.options.id === "dsh-subscription-management-balance");
+    const settings = empty.registrations.find((entry) => entry.options.id === "dsh-subscription-management-auth");
+    assert.ok(card !== undefined && typeof card.component === "function");
+    assert.ok(settings !== undefined && typeof settings.component === "function");
+    card.component({ ...card.options.inject(true), useSessions: undefined });
+    settings.component({ ...settings.options.inject() });
+    assert.ok(empty.created.some((node) => node.type === "section"), "both components must render a section root");
+
+    // SubscriptionAuthSettings state order: 1 order, 2 hidden, 3 draftOrder,
+    // 4 draftHidden, 5 managing, 6 expanded, 7 pinned, 8 accounts, 9 summaries.
+    const agyUsage = {
+        summary: { window: { duration: 5, unit: "hour" }, used: 20, limit: 100, remainingPercent: 80, resetAt: "2026-10-27T05:00:00Z" },
+        limits: [{ name: "周额度", window: { duration: 1, unit: "week" }, used: 50, limit: 100, remainingPercent: 50 }],
+        details: [{ label: "Gemini 5小时", text: "80%" }, { label: "Claude / GPT 5小时", text: "20%" }]
+    };
+    const expandedAgy = mount({
+        6: "antigravity",
+        8: { antigravity: { configured: true, verified: true, method: "oauth" } },
+        9: { antigravity: { usage: agyUsage } }
+    });
+    const agySettings = expandedAgy.registrations.find((entry) => entry.options.id === "dsh-subscription-management-auth");
+    agySettings.component({ rpc: { call: async () => ({ ok: true, value: {} }) } });
+    const agyText = JSON.stringify(expandedAgy.created.map((node) => node.children));
+    assert.equal(agyText.includes("Gemini 5小时"), true, "an expanded Antigravity panel lists every group");
+    assert.equal(agyText.includes("社区逆向"), true, "reverse-engineered quotas are labelled as such");
+    assert.equal(agyText.includes("不会替你配置模型"), true,
+        "the panel states that models are configured by the user");
+
+    const mistralUsage = {
+        summary: {
+            name: "API 月度额度", window: { duration: 1, unit: "month" },
+            used: 10, limit: 40, remainingPercent: 75, unit: "amount", currency: "USD",
+            resetAt: "2026-11-01T00:00:00Z"
+        },
+        limits: [],
+        plan: "Mistral Pro"
+    };
+    const expandedMistral = mount({
+        6: "mistral",
+        8: { mistral: { configured: true, verified: true, method: "api-key" } },
+        9: { mistral: { usage: mistralUsage } }
+    });
+    const mistralSettings = expandedMistral.registrations.find((entry) => entry.options.id === "dsh-subscription-management-auth");
+    mistralSettings.component({ rpc: { call: async () => ({ ok: true, value: {} }) } });
+    const mistralText = JSON.stringify(expandedMistral.created.map((node) => node.children));
+    assert.equal(mistralText.includes("等价额度"), true, "an amount-valued subscription is labelled as equivalent quota");
+    assert.equal(mistralText.includes("Mistral Pro"), true, "the panel shows the vendor plan");
+}
+
+console.log("client subscription checks passed");

@@ -104,11 +104,6 @@
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
         }
 
-        function summaryPercent(row) {
-            const percent = remainingPercentOf(row);
-            return Number.isFinite(percent) ? `${Math.round(Math.max(0, Math.min(100, percent)))}%` : "—";
-        }
-
         const authCss = `
 .dsh-uak-auth { display:flex; flex-direction:column; gap:10px; max-width:760px; color:var(--dsw-alias-label-primary); }
 .dsh-uak-authHead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -139,7 +134,7 @@
 .dsh-uak-summaryPlan { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--dsw-alias-label-secondary); font-size:12px; }
 .dsh-uak-summaryQuota { display:flex; align-items:center; gap:8px; min-width:0; overflow-x:auto; font-size:12px; white-space:nowrap; }
 .dsh-uak-summaryQuota time { flex:none; color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
-.dsh-uak-summaryPercent { flex:0 0 52px; text-align:center; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-summaryPercent { flex:0 1 auto; min-width:52px; max-width:45%; overflow:hidden; text-align:center; text-overflow:ellipsis; white-space:nowrap; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
 .dsh-uak-summaryResetCaption { flex:1; text-align:right; color:var(--dsw-alias-label-caption); }
 .dsh-uak-summaryDivider { flex:none; color:var(--dsw-alias-border-l2); }
 .dsh-uak-keyTitle { display:flex; align-items:center; justify-content:space-between; min-height:24px; font-size:12px; font-weight:600; }
@@ -600,13 +595,38 @@
                     react.createElement("div", { className: "dsh-uak-summaryQuota" },
                         react.createElement("span", null, quotaWindowLabel(row)),
                         react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
-                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row)),
+                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, quotaRowText(row)),
                         react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
                         react.createElement("span", { className: "dsh-uak-summaryResetCaption" }, "距现在最近的重置时间"),
                         react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
                         react.createElement("time", { dateTime: row?.resetAt }, formatSummaryReset(row?.resetAt))),
+                    Array.isArray(usage?.details) && usage.details.length > 0
+                        ? react.createElement("div", { className: "dsh-uak-groupTabs" },
+                            usage.details.map((detail) => react.createElement("span", {
+                                className: "dsh-uak-authHint", key: `detail:${detail.label}`
+                            }, `${detail.label}：${detail.text}`)))
+                        : null,
                     keySection(vendor),
                     react.createElement("p", { className: "dsh-uak-authHint" }, vendor.authHint),
+                    vendor.quotaKind === "amount"
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            "该订阅只有月度窗口，接口返回的是等价额度（金额 / credits）而不是百分比；卡片显示剩余等价额度，百分比仅作为条形图参考。")
+                        : null,
+                    vendor.quotaSource === "community"
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            "额度来自社区逆向或厂商内部接口，厂商调整后可能失效；读取失败时显示真实错误，不会伪造数据。")
+                        : null,
+                    vendor.quotaSource === "none"
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            "该厂商没有已确认的只读额度端点，只保存凭据并做 API 可用性验证。")
+                        : null,
+                    providerNeedsManualModelSetup(vendor)
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            vendorUsesConsoleApiKey(vendor)
+                                ? "该订阅的 API Key 由你在官方控制台自行创建，本插件不会替你配置模型或 provider；创建后请到 DSH 设置 → 模型 手动添加。"
+                                : "本插件不会替你配置模型或 provider；请在 DSH 设置 → 模型 中手动配置。")
+                        : react.createElement("p", { className: "dsh-uak-authHint" },
+                            "认证通过后本插件会自动启用对应的原生 provider 分组（含上下文与图片能力）；其余模型设置仍可在 DSH 设置 → 模型 中调整。"),
                     vendor.groups ? react.createElement("div", { className: "dsh-uak-groupTabs" },
                         vendor.groups.map((entry) => react.createElement("span", { className: "dsh-uak-authHint", key: entry.id },
                             `${entry.name}${account?.groups?.[entry.id]?.verified ? " · 已验证" : account?.groups?.[entry.id]?.configured ? " · 未验证" : " · 未配置"}`))) : null,
@@ -703,7 +723,7 @@
 
             return react.createElement("section", { className: "dsh-uak-auth", "data-dsh-plugin": name },
                 react.createElement("div", { className: "dsh-uak-nativeGuide" },
-                    "认证完成后会自动配置文本/图片输入、模型思考档位和默认 1M 上下文。可前往 DSH 设置 → 模型，在原生模型设置中进一步个性化。"),
+                    "本插件只做订阅认证与额度展示，不会替 API Key 类订阅改写模型设置。官方订阅（Kimi Code、Mistral、Z.ai / GLM、Qwen、MiniMax、Cerebras、Kilo 等）请先在自己的控制台创建“走订阅的 API Key”，然后到 DSH 设置 → 模型 自行添加模型。订阅登录类（Claude、ChatGPT / Codex）由本插件直接挂成原生 provider（claude-subscription / codex-subscription），Protocom、OpenCode Go、Command Code、ClinePass 由插件自带 provider runtime 提供服务——这两组会在认证后自动启用对应 provider 分组。"),
                 react.createElement("div", { className: "dsh-uak-authHead" },
                     react.createElement("h2", null, "订阅认证"),
                     react.createElement("div", { className: "dsh-uak-authForm" },
@@ -714,6 +734,8 @@
                         }, managing ? "保存" : "管理"))),
                 react.createElement("p", { className: "dsh-uak-authHint" },
                     "模型、图片、上下文与思考强度请在 DSH 原生模型设置中管理。厂商凭据与账户摘要在此展开。"),
+                react.createElement("p", { className: "dsh-uak-authHint" },
+                    "订阅按提供商精确匹配：只有当前模型所属的 provider 完全属于某厂商时，侧栏卡片才显示该厂商的额度；第三方中转商提供的同款模型（例如中转来的 GLM）不会切换订阅套餐。"),
                 managing
                     ? react.createElement(react.Fragment, null,
                         react.createElement("p", { className: "dsh-uak-authHint" }, "在显示和隐藏栏目之间拖动厂商，点击保存后应用。"),

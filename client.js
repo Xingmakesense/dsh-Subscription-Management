@@ -31,211 +31,471 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     "id": "kimi",
     "name": "Kimi",
     "plan": "Kimi Code",
-    "methods": ["device", "api-key"],
+    "methods": [
+      "device",
+      "api-key"
+    ],
     "usage": "kimi",
     "api": "open",
     "host": "kimi.com",
     "consoleUrl": "https://www.kimi.com/code",
-    "authHint": "使用 Kimi Code 订阅 API Key，或通过设备授权登录。",
-    "modelAliases": ["kimi", "moonshot"]
+    "authHint": "使用 Kimi Code 订阅 API Key，或通过设备授权登录。请在 Kimi Code 控制台自行创建订阅 API Key。",
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "kimi",
+      "moonshot",
+      "kimi-code",
+      "moonshotai"
+    ],
+    "quotaSource": "official"
   },
   {
     "id": "chatgpt",
     "name": "ChatGPT",
     "plan": "ChatGPT Plus / Codex",
-    "methods": ["cli", "oauth"],
+    "methods": [
+      "cli",
+      "oauth"
+    ],
     "usage": "chatgpt",
     "api": "closed",
+    "apiConfig": false,
     "host": "chatgpt.com",
     "consoleUrl": "https://chatgpt.com/codex",
-    "cli": { "kind": "codex", "label": "Codex CLI", "command": "codex login" },
-    "authHint": "推荐先运行 codex login，再导入 Codex CLI 凭据；也可粘贴 auth.json 中的 tokens。",
-    "modelAliases": ["chatgpt", "openai", "gpt", "codex"]
+    "cli": {
+      "kind": "codex",
+      "label": "Codex CLI",
+      "command": "codex login"
+    },
+    "authHint": "推荐先运行 codex login，再导入 Codex CLI 凭据；也可粘贴 auth.json 中的 tokens。认证成功后本插件会把你的 ChatGPT 订阅挂成原生 provider（codex-subscription），模型直接可选；这是社区逆向的 OAuth 通道，可能违反厂商条款并随时失效。",
+    "modelSetup": "auto",
+    "quotaKind": "percent",
+    "providerIds": [
+      "codex-subscription"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "glm",
     "name": "GLM",
     "plan": "GLM Coding Plan",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "glm",
     "api": "open",
     "host": "z.ai",
     "consoleUrl": "https://z.ai/manage-apikey/apikey-list",
-    "authHint": "使用 Z.ai / GLM Coding Plan 控制台创建的 API Key。",
-    "modelAliases": ["glm", "zhipu", "z.ai", "bigmodel"]
+    "authHint": "使用 Z.ai / GLM Coding Plan 控制台创建的 API Key：Z.ai 的 Standard Key 与 Coding Plan Key 分开计费，用错 Key 不会消耗订阅额度。第三方中转商提供的 GLM 模型不属于该订阅。",
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "glm",
+      "zai",
+      "z.ai",
+      "zhipu",
+      "bigmodel",
+      "glm-coding"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "qwen",
     "name": "Qwen",
     "plan": "Qwen Coding Plan",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "qwen",
     "api": "open",
     "host": "alibabacloud.com",
     "consoleUrl": "https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=coding-plan#/efm/coding_plan",
     "authHint": "使用 Alibaba Coding Plan / DashScope API Key；部分中国区账号仍可能要求控制台会话。",
-    "modelAliases": ["qwen", "dashscope", "aliyun", "alibaba", "tongyi"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "qwen",
+      "dashscope",
+      "alibaba",
+      "aliyun",
+      "tongyi",
+      "bailian"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "claude",
     "name": "Claude",
     "plan": "Claude Pro / Max",
-    "methods": ["cli", "oauth"],
+    "methods": [
+      "cli",
+      "oauth"
+    ],
     "usage": "claude",
     "api": "closed",
+    "apiConfig": false,
     "host": "claude.ai",
     "consoleUrl": "https://claude.ai/settings/usage",
-    "cli": { "kind": "claude", "label": "Claude Code", "command": "claude login" },
-    "authHint": "推荐先运行 claude login，再导入 Claude Code 凭据。额度接口需要 user:profile 权限；setup-token 不能替代。",
-    "modelAliases": ["claude", "anthropic", "sonnet", "opus"]
+    "cli": {
+      "kind": "claude",
+      "label": "Claude Code",
+      "command": "claude login"
+    },
+    "authHint": "推荐先运行 claude login，再导入 Claude Code 凭据（setup-token 不能替代）。认证成功后本插件会把你的 Claude 订阅挂成原生 provider（claude-subscription），模型直接可选；这是社区逆向的 OAuth 通道，可能违反厂商条款并随时失效。",
+    "modelSetup": "auto",
+    "quotaKind": "percent",
+    "providerIds": [
+      "claude-subscription"
+    ],
+    "quotaSource": "official"
   },
   {
     "id": "gemini",
     "name": "Gemini",
     "plan": "Gemini Code Assist",
-    "methods": ["cli"],
+    "methods": [
+      "cli"
+    ],
     "usage": "gemini",
     "api": "open",
     "host": "google.com",
     "consoleUrl": "https://gemini.google.com/usage",
-    "cli": { "kind": "gemini", "label": "Gemini CLI", "command": "gemini" },
+    "cli": {
+      "kind": "gemini",
+      "label": "Gemini CLI",
+      "command": "gemini"
+    },
     "authHint": "先在 Gemini CLI 完成 Google OAuth，再导入 oauth_creds.json；API Key 与 Vertex AI 不用于此订阅额度。",
-    "modelAliases": ["gemini", "google"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "gemini",
+      "google-gemini",
+      "gemini-cli",
+      "google"
+    ],
+    "quotaSource": "official"
+  },
+  {
+    "id": "antigravity",
+    "name": "Google Antigravity",
+    "plan": "Antigravity Pro / Ultra",
+    "methods": [
+      "cli",
+      "oauth"
+    ],
+    "usage": "antigravity",
+    "api": "closed",
+    "apiConfig": false,
+    "host": "google.com",
+    "consoleUrl": "https://antigravity.google",
+    "cli": {
+      "kind": "antigravity",
+      "label": "Antigravity CLI",
+      "command": "agy"
+    },
+    "authHint": "先在 Antigravity CLI 完成 Google 登录（agy），再导入 ~/.gemini/antigravity-cli/antigravity-oauth-token；Windows 的凭据通常在“凭据管理器”的 gemini:antigravity 条目里，浏览器不读取系统凭据库，可直接粘贴该 JSON。官方只提供 `agy /usage`，这里的 5 小时与周窗口来自 v1internal:retrieveUserQuotaSummary（社区逆向）。",
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "antigravity",
+      "agy",
+      "google-antigravity",
+      "gemini-antigravity"
+    ],
+    "quotaSource": "community"
+  },
+  {
+    "id": "mistral",
+    "name": "Mistral",
+    "plan": "Mistral Pro / Team / Enterprise",
+    "methods": [
+      "api-key"
+    ],
+    "usage": "mistral",
+    "api": "open",
+    "host": "mistral.ai",
+    "consoleUrl": "https://console.mistral.ai/home?profile_dialog=api-keys",
+    "authHint": "在 console.mistral.ai 创建 API Key。额度来自官方 GET /v1/billing/budget（mistral-vibe CLI 同款）：只有月度窗口，返回的是“等价额度”（金额 + 已用百分比），不是百分比配额；账号需要 see_org_inference_usage 权限，官方 Admin API /v1/admin/usage 仅 Enterprise 可用。",
+    "modelSetup": "manual",
+    "quotaKind": "amount",
+    "providerIds": [
+      "mistral",
+      "mistralai",
+      "codestral",
+      "mistral-code"
+    ],
+    "quotaSource": "official"
   },
   {
     "id": "devin",
     "name": "Devin",
     "plan": "Devin 订阅",
-    "methods": ["session"],
+    "methods": [
+      "session"
+    ],
     "usage": "devin",
     "api": "closed",
+    "apiConfig": false,
     "host": "devin.ai",
     "consoleUrl": "https://app.devin.ai",
     "authHint": "先运行 devin auth login，粘贴 devin-session-token$ 开头的会话 Token。",
-    "modelAliases": ["devin", "cognition"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "devin",
+      "cognition"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "kilo",
     "name": "Kilo",
     "plan": "Kilo Credits",
-    "methods": ["api-key", "cli"],
+    "methods": [
+      "api-key",
+      "cli"
+    ],
     "usage": "kilo",
     "api": "open",
     "host": "kilo.ai",
     "consoleUrl": "https://app.kilo.ai",
-    "cli": { "kind": "kilo", "label": "Kilo CLI", "command": "kilo auth login" },
+    "cli": {
+      "kind": "kilo",
+      "label": "Kilo CLI",
+      "command": "kilo auth login"
+    },
     "authHint": "使用 app.kilo.ai 的 API Token，或先运行 kilo auth login 后导入 CLI 会话。",
-    "modelAliases": ["kilo", "kilocode"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "kilo",
+      "kilocode"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "kiro",
     "name": "Kiro",
     "plan": "Kiro 订阅",
-    "methods": ["cli", "oauth"],
+    "methods": [
+      "cli",
+      "oauth"
+    ],
     "usage": "kiro",
     "api": "open",
     "host": "kiro.dev",
     "consoleUrl": "https://kiro.dev",
-    "cli": { "kind": "kiro", "label": "Kiro", "command": "kiro-cli login" },
+    "cli": {
+      "kind": "kiro",
+      "label": "Kiro",
+      "command": "kiro-cli login"
+    },
     "authHint": "当前支持导入 kiro-auth-token.json 或粘贴 OAuth JSON。Kiro 订阅 API Key 的只读用量端点尚未确认，暂不接收。",
-    "modelAliases": ["kiro", "codewhisperer"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "kiro",
+      "codewhisperer"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "cerebras",
     "name": "Cerebras",
     "plan": "Cerebras Code",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "cerebras",
     "api": "open",
     "host": "cerebras.ai",
     "consoleUrl": "https://cloud.cerebras.ai",
     "authHint": "使用 Cerebras API Key。可验证 API 可用性；没有公开订阅额度窗口时显示为未提供。",
-    "modelAliases": ["cerebras"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "cerebras",
+      "cerebras-code"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "minimax",
     "name": "MiniMax",
     "plan": "MiniMax M Plan",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "minimax",
     "api": "open",
     "host": "minimax.io",
     "consoleUrl": "https://platform.minimax.io",
     "authHint": "使用 MiniMax Token Plan API Key；全球版与中国区会按响应自动尝试。",
-    "modelAliases": ["minimax", "minimaxi"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "minimax",
+      "minimaxi"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "trae",
     "name": "Trae",
     "plan": "Trae 订阅",
-    "methods": ["cookie"],
+    "methods": [
+      "cookie"
+    ],
     "usage": "trae",
     "api": "closed",
+    "apiConfig": false,
     "host": "trae.cn",
     "consoleUrl": "https://www.trae.cn",
     "authHint": "登录 trae.cn 后，粘贴 API 仪表盘请求中的 Cookie。短期交换 Token 仅在 Host 内使用，不保存。",
-    "modelAliases": ["trae", "traecn"]
+    "modelSetup": "manual",
+    "quotaKind": "percent",
+    "providerIds": [
+      "trae",
+      "traecn"
+    ],
+    "quotaSource": "community"
   },
   {
     "id": "protocom",
     "name": "Protocom",
     "plan": "Protocom 官方 API",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "protocom",
     "api": "open",
     "host": "protocom.org",
     "consoleUrl": "https://relay.protocom.org",
     "authHint": "分别填写需要启用的 Protocom 分组 API Key；模型、协议、图片和档位在 DSH 原生模型设置中管理。",
-    "modelAliases": ["protocom-aggregate", "protocom-codex", "protocom-stepfun", "protocom-grok"],
+    "modelSetup": "auto",
+    "quotaKind": "percent",
+    "providerIds": [
+      "protocom",
+      "protocom-aggregate",
+      "protocom-codex",
+      "protocom-stepfun",
+      "protocom-grok"
+    ],
     "groups": [
-      { "id": "aggregate", "name": "Aggregate", "plan": "Protocom Aggregate" },
-      { "id": "codex", "name": "Codex", "plan": "Protocom Codex" },
-      { "id": "stepfun", "name": "StepFun", "plan": "Protocom StepFun" },
-      { "id": "grok", "name": "Grok", "plan": "Protocom Grok" }
-    ]
+      {
+        "id": "aggregate",
+        "name": "Aggregate",
+        "plan": "Protocom Aggregate"
+      },
+      {
+        "id": "codex",
+        "name": "Codex",
+        "plan": "Protocom Codex"
+      },
+      {
+        "id": "stepfun",
+        "name": "StepFun",
+        "plan": "Protocom StepFun"
+      },
+      {
+        "id": "grok",
+        "name": "Grok",
+        "plan": "Protocom Grok"
+      }
+    ],
+    "quotaSource": "vendor"
   },
   {
     "id": "opencode-go",
     "name": "OpenCode Go",
     "plan": "OpenCode Go 订阅",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "opencode-go",
     "api": "open",
     "host": "opencode.ai",
     "consoleUrl": "https://opencode.ai/zen/go",
     "authHint": "使用 OpenCode Go 订阅 API Key。模型与上下文档位在 DSH 原生模型设置中管理。",
-    "modelAliases": ["opencode-go-sub"]
+    "modelSetup": "auto",
+    "quotaKind": "percent",
+    "providerIds": [
+      "opencode-go",
+      "opencode-go-sub"
+    ],
+    "quotaSource": "vendor"
   },
   {
     "id": "commandcode",
     "name": "Command Code",
     "plan": "Command Code 订阅",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "commandcode",
     "api": "open",
     "host": "commandcode.ai",
     "consoleUrl": "https://commandcode.ai",
     "authHint": "使用 Command Code 订阅 API Key。套餐可用模型由厂商账户信息决定。",
-    "modelAliases": ["commandcode"]
+    "modelSetup": "auto",
+    "quotaKind": "percent",
+    "providerIds": [
+      "commandcode",
+      "command-code"
+    ],
+    "quotaSource": "vendor"
   },
   {
     "id": "clinepass",
     "name": "ClinePass",
     "plan": "ClinePass 订阅",
-    "methods": ["api-key"],
+    "methods": [
+      "api-key"
+    ],
     "usage": "clinepass",
     "api": "open",
     "host": "cline.bot",
     "consoleUrl": "https://cline.bot",
     "authHint": "使用 ClinePass 订阅 API Key。厂商没有已确认的余额或配额读取端点。",
-    "modelAliases": ["clinepass", "cline-pass"]
+    "modelSetup": "auto",
+    "quotaKind": "percent",
+    "providerIds": [
+      "clinepass",
+      "cline-pass"
+    ],
+    "quotaSource": "none"
   }
 ]
 );
         const VENDOR_BY_ID = new Map(SUBSCRIPTION_VENDORS.map((vendor) => [vendor.id, vendor]));
 
+        /** Closed vendors default to manual API storage; `apiConfig: false` opts out. */
         function vendorApiManageable(vendor) {
-            return vendor !== undefined && vendor !== null && vendor.api === "closed";
+            return vendor !== undefined && vendor !== null && vendor.api === "closed" && vendor.apiConfig !== false;
+        }
+
+        /**
+         * Whether the vendor's own console issues subscription-scoped API keys.
+         *
+         * Those subscriptions are authenticated with a key the user creates
+         * themselves, so the plugin must not write model/provider settings on
+         * their behalf.
+         */
+        function vendorUsesConsoleApiKey(vendor) {
+            return Array.isArray(vendor?.methods) && vendor.methods.includes("api-key");
+        }
+
+        /**
+         * Whether the user configures models themselves after authenticating.
+         *
+         * `modelSetup: "manual"` is the default for official subscriptions that
+         * own their API-key console; only the provider runtime mounted by this
+         * plugin ("auto") writes native provider groups after authentication.
+         */
+        function providerNeedsManualModelSetup(vendor) {
+            return vendor?.modelSetup !== "auto";
         }
 
         function vendorSupports(vendor, method) {
@@ -684,22 +944,74 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             return known?.name ?? vendor.charAt(0).toUpperCase() + vendor.slice(1);
         }
 
-        /** Which subscription vendor a selected model belongs to, if any. */
+        /**
+         * The exact DSH provider routes a subscription owns.
+         *
+         * The catalog lists them explicitly; a vendor id is always its own
+         * route. Legacy catalogs used `modelAliases` for the same purpose.
+         */
+        function providerRouteIds(vendor) {
+            const explicit = Array.isArray(vendor?.providerIds) ? vendor.providerIds
+                : Array.isArray(vendor?.modelAliases) ? vendor.modelAliases : [];
+            return [vendor?.id, ...explicit]
+                .filter((id) => typeof id === "string" && id.trim().length > 0)
+                .map((id) => id.trim().toLowerCase());
+        }
+
+        /**
+         * Which subscription vendor owns an exact provider route.
+         *
+         * Strict by design: only the **provider** decides, and only on an exact
+         * match. A third-party relay that happens to serve `glm-4.6` is not the
+         * Z.ai subscription, so model names are never evidence on their own.
+         */
+        function vendorForProvider(provider) {
+            if (typeof provider !== "string") return undefined;
+            const route = provider.trim().toLowerCase();
+            if (route.length === 0) return undefined;
+            return SUBSCRIPTION_VENDORS.find((vendor) => providerRouteIds(vendor).includes(route))?.id;
+        }
+
+        /** Which subscription vendor the selected model belongs to, if any. */
         function vendorForModel(model, provider) {
-            const text = `${typeof model === "string" ? model : ""} ${typeof provider === "string" ? provider : ""}`
-                .toLowerCase();
-            if (text.trim().length === 0) return undefined;
-            const route = typeof provider === "string" && provider.length > 0
-                ? provider.toLowerCase()
-                : text.trim().split(/\s+/)[0];
-            const exact = SUBSCRIPTION_VENDORS.find((vendor) =>
-                [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
-                    .some((alias) => route === String(alias).toLowerCase()));
-            if (exact !== undefined) return exact.id;
-            const match = SUBSCRIPTION_VENDORS.find((vendor) =>
-                [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
-                    .some((alias) => text.includes(String(alias).toLowerCase())));
-            return match?.id;
+            if (typeof provider === "string" && provider.trim().length > 0) return vendorForProvider(provider);
+            // A bare label counts only when it is exactly a known provider route.
+            return vendorForProvider(model);
+        }
+
+        /**
+         * Amount-valued quota ("等价额度").
+         *
+         * Some subscriptions (Mistral) answer with a monthly budget in money or
+         * credits instead of a percentage. The row keeps `used`/`limit` in that
+         * native unit and flags `unit`, so the card shows the remaining
+         * equivalent amount and only then the derived percentage.
+         */
+        function quotaRowAmount(row) {
+            if (row?.unit !== "amount" && row?.unit !== "credits" && row?.unit !== "tokens") return undefined;
+            if (!Number.isFinite(row?.limit) || !Number.isFinite(row?.used)) return undefined;
+            const remaining = Math.max(0, row.limit - row.used);
+            return {
+                unit: row.unit,
+                currency: typeof row.currency === "string" && row.currency.length > 0 ? row.currency : undefined,
+                remaining,
+                used: row.used,
+                limit: row.limit
+            };
+        }
+
+        /** Card text for one quota row: an equivalent amount when the vendor quotes one. */
+        function quotaRowText(row) {
+            const amount = quotaRowAmount(row);
+            if (amount !== undefined) {
+                if (amount.currency !== undefined) {
+                    const money = formatCurrencyAmount(amount.remaining, amount.currency);
+                    if (money !== undefined) return money;
+                }
+                const suffix = amount.unit === "credits" ? " credits" : amount.unit === "tokens" ? " tokens" : "";
+                return `${formatQuotaNumber(amount.remaining)}${suffix}`;
+            }
+            return formatQuotaPercent(remainingPercentOf(row));
         }
 
         /** Pure card projection, also used by regression tests. */
@@ -716,13 +1028,15 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             ) ?? "—";
             const views = slots.map((slot) => {
                 const percent = remainingPercentOf(slot.row);
+                const amount = quotaRowAmount(slot.row);
                 return {
                     id: slot.id,
                     label: slot.label,
                     bar: slot.bar === true,
                     depth: Number.isFinite(slot.depth) ? slot.depth : 0,
                     percent,
-                    text: formatQuotaPercent(percent),
+                    amount,
+                    text: quotaRowText(slot.row),
                     resetAt: slot.row?.resetAt
                 };
             });
@@ -733,10 +1047,14 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 lines.push(`${vendorName}：额度未提供`);
             }
             for (const view of views) {
-                if (view.percent === undefined) {
+                const reset = view.resetAt ? `，重置 ${formatResetAt(view.resetAt)}` : "";
+                if (view.amount !== undefined) {
+                    const percent = view.percent === undefined ? "" : `（剩余 ${Math.round(view.percent)}%）`;
+                    lines.push(`${vendorName} ${view.label}：剩余等价额度 ${view.text}${percent}${reset}`);
+                } else if (view.percent === undefined) {
                     lines.push(`${vendorName} ${view.label}：未提供`);
                 } else {
-                    lines.push(`${vendorName} ${view.label}：剩余 ${Math.round(view.percent)}%${view.resetAt ? `，重置 ${formatResetAt(view.resetAt)}` : ""}`);
+                    lines.push(`${vendorName} ${view.label}：剩余 ${Math.round(view.percent)}%${reset}`);
                 }
             }
             const month = monthQuotaInfo(kimiState?.usage);
@@ -1010,18 +1328,38 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 percent);
         }
 
-        /** Current session's selected model, used to pick the vendor to show. */
-        function activeModelLabel(state) {
+        /** Current session's model selection, split into provider and model. */
+        function activeModelSelection(state) {
             const sessions = state?.byId ?? {};
             const current = Object.values(sessions).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)
                 ?? Object.values(sessions).find((session) => session?.id !== undefined && session?.running === true);
             if (current === undefined) return undefined;
             const values = state?.projectionsBySession?.[current.id]?.values ?? {};
             const selection = values.modelSelection?.next ?? values.modelSelection;
-            if (typeof selection === "string") return selection;
+            if (typeof selection === "string") return { model: selection };
             const model = selection?.model ?? selection?.modelId ?? selection?.id;
             const provider = selection?.provider ?? selection?.providerId ?? selection?.directory ?? selection?.vendor;
-            return [provider, model].filter((part) => typeof part === "string" && part.length > 0).join(" ") || undefined;
+            const hasModel = typeof model === "string" && model.length > 0;
+            const hasProvider = typeof provider === "string" && provider.length > 0;
+            if (!hasModel && !hasProvider) return undefined;
+            return {
+                ...(hasProvider ? { provider } : {}),
+                ...(hasModel ? { model } : {})
+            };
+        }
+
+        /** Display label for the selected model. */
+        function activeModelLabel(state) {
+            const selection = activeModelSelection(state);
+            if (selection === undefined) return undefined;
+            return [selection.provider, selection.model]
+                .filter((part) => typeof part === "string" && part.length > 0)
+                .join(" ") || undefined;
+        }
+
+        /** Exact DSH provider route of the selected model; the only vendor signal. */
+        function activeModelProvider(state) {
+            return activeModelSelection(state)?.provider;
         }
 
         /**
@@ -1069,6 +1407,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             const sessionsHook = typeof useSessions === "function" ? useSessions : useNoSessions;
             const runningIds = sessionsHook(runningSessionIds);
             const modelLabel = sessionsHook(activeModelLabel);
+            const modelProvider = sessionsHook(activeModelProvider);
             const view = balanceCardView(kimiState, deepState, modelLabel);
             const previousRunning = react.useRef(runningIds);
             react.useEffect(() => {
@@ -1102,10 +1441,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 if (typeof timer?.unref === "function") timer.unref();
                 return () => clearInterval(timer);
             }, [refreshAll]);
-            // One initialization request. Unknown models keep the last vendor and
-            // never trigger a refresh; a known model change switches exactly once.
+            // One initialization request. A subscription is chosen only from the
+            // exact provider route: an unrecognized route keeps the last vendor and
+            // never triggers a refresh, a recognized one switches exactly once.
             react.useEffect(() => {
-                const vendor = vendorForModel(modelLabel);
+                const vendor = vendorForModel(modelLabel, modelProvider);
                 if (vendor !== undefined) {
                     initialRequested.current = true;
                     if (vendor === preferredVendor.current) return;
@@ -1118,7 +1458,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 const initial = preferredVendor.current ?? subscriberVendor;
                 preferredVendor.current = initial;
                 refreshKimi(false, initial);
-            }, [modelLabel, subscriberVendor, refreshKimi, rpc]);
+            }, [modelLabel, modelProvider, subscriberVendor, refreshKimi, rpc]);
 
             if (narrow) {
                 return react.createElement(
@@ -1287,11 +1627,6 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
         }
 
-        function summaryPercent(row) {
-            const percent = remainingPercentOf(row);
-            return Number.isFinite(percent) ? `${Math.round(Math.max(0, Math.min(100, percent)))}%` : "—";
-        }
-
         const authCss = `
 .dsh-uak-auth { display:flex; flex-direction:column; gap:10px; max-width:760px; color:var(--dsw-alias-label-primary); }
 .dsh-uak-authHead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -1322,7 +1657,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 .dsh-uak-summaryPlan { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--dsw-alias-label-secondary); font-size:12px; }
 .dsh-uak-summaryQuota { display:flex; align-items:center; gap:8px; min-width:0; overflow-x:auto; font-size:12px; white-space:nowrap; }
 .dsh-uak-summaryQuota time { flex:none; color:var(--dsw-alias-label-caption); font-variant-numeric:tabular-nums; }
-.dsh-uak-summaryPercent { flex:0 0 52px; text-align:center; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
+.dsh-uak-summaryPercent { flex:0 1 auto; min-width:52px; max-width:45%; overflow:hidden; text-align:center; text-overflow:ellipsis; white-space:nowrap; color:var(--dsw-alias-label-primary); font-variant-numeric:tabular-nums; font-weight:600; }
 .dsh-uak-summaryResetCaption { flex:1; text-align:right; color:var(--dsw-alias-label-caption); }
 .dsh-uak-summaryDivider { flex:none; color:var(--dsw-alias-border-l2); }
 .dsh-uak-keyTitle { display:flex; align-items:center; justify-content:space-between; min-height:24px; font-size:12px; font-weight:600; }
@@ -1783,13 +2118,38 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     react.createElement("div", { className: "dsh-uak-summaryQuota" },
                         react.createElement("span", null, quotaWindowLabel(row)),
                         react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
-                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, summaryPercent(row)),
+                        react.createElement("span", { className: "dsh-uak-summaryPercent" }, quotaRowText(row)),
                         react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
                         react.createElement("span", { className: "dsh-uak-summaryResetCaption" }, "距现在最近的重置时间"),
                         react.createElement("span", { className: "dsh-uak-summaryDivider", "aria-hidden": true }, "|"),
                         react.createElement("time", { dateTime: row?.resetAt }, formatSummaryReset(row?.resetAt))),
+                    Array.isArray(usage?.details) && usage.details.length > 0
+                        ? react.createElement("div", { className: "dsh-uak-groupTabs" },
+                            usage.details.map((detail) => react.createElement("span", {
+                                className: "dsh-uak-authHint", key: `detail:${detail.label}`
+                            }, `${detail.label}：${detail.text}`)))
+                        : null,
                     keySection(vendor),
                     react.createElement("p", { className: "dsh-uak-authHint" }, vendor.authHint),
+                    vendor.quotaKind === "amount"
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            "该订阅只有月度窗口，接口返回的是等价额度（金额 / credits）而不是百分比；卡片显示剩余等价额度，百分比仅作为条形图参考。")
+                        : null,
+                    vendor.quotaSource === "community"
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            "额度来自社区逆向或厂商内部接口，厂商调整后可能失效；读取失败时显示真实错误，不会伪造数据。")
+                        : null,
+                    vendor.quotaSource === "none"
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            "该厂商没有已确认的只读额度端点，只保存凭据并做 API 可用性验证。")
+                        : null,
+                    providerNeedsManualModelSetup(vendor)
+                        ? react.createElement("p", { className: "dsh-uak-authHint" },
+                            vendorUsesConsoleApiKey(vendor)
+                                ? "该订阅的 API Key 由你在官方控制台自行创建，本插件不会替你配置模型或 provider；创建后请到 DSH 设置 → 模型 手动添加。"
+                                : "本插件不会替你配置模型或 provider；请在 DSH 设置 → 模型 中手动配置。")
+                        : react.createElement("p", { className: "dsh-uak-authHint" },
+                            "认证通过后本插件会自动启用对应的原生 provider 分组（含上下文与图片能力）；其余模型设置仍可在 DSH 设置 → 模型 中调整。"),
                     vendor.groups ? react.createElement("div", { className: "dsh-uak-groupTabs" },
                         vendor.groups.map((entry) => react.createElement("span", { className: "dsh-uak-authHint", key: entry.id },
                             `${entry.name}${account?.groups?.[entry.id]?.verified ? " · 已验证" : account?.groups?.[entry.id]?.configured ? " · 未验证" : " · 未配置"}`))) : null,
@@ -1886,7 +2246,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
 
             return react.createElement("section", { className: "dsh-uak-auth", "data-dsh-plugin": name },
                 react.createElement("div", { className: "dsh-uak-nativeGuide" },
-                    "认证完成后会自动配置文本/图片输入、模型思考档位和默认 1M 上下文。可前往 DSH 设置 → 模型，在原生模型设置中进一步个性化。"),
+                    "本插件只做订阅认证与额度展示，不会替 API Key 类订阅改写模型设置。官方订阅（Kimi Code、Mistral、Z.ai / GLM、Qwen、MiniMax、Cerebras、Kilo 等）请先在自己的控制台创建“走订阅的 API Key”，然后到 DSH 设置 → 模型 自行添加模型。订阅登录类（Claude、ChatGPT / Codex）由本插件直接挂成原生 provider（claude-subscription / codex-subscription），Protocom、OpenCode Go、Command Code、ClinePass 由插件自带 provider runtime 提供服务——这两组会在认证后自动启用对应 provider 分组。"),
                 react.createElement("div", { className: "dsh-uak-authHead" },
                     react.createElement("h2", null, "订阅认证"),
                     react.createElement("div", { className: "dsh-uak-authForm" },
@@ -1897,6 +2257,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         }, managing ? "保存" : "管理"))),
                 react.createElement("p", { className: "dsh-uak-authHint" },
                     "模型、图片、上下文与思考强度请在 DSH 原生模型设置中管理。厂商凭据与账户摘要在此展开。"),
+                react.createElement("p", { className: "dsh-uak-authHint" },
+                    "订阅按提供商精确匹配：只有当前模型所属的 provider 完全属于某厂商时，侧栏卡片才显示该厂商的额度；第三方中转商提供的同款模型（例如中转来的 GLM）不会切换订阅套餐。"),
                 managing
                     ? react.createElement(react.Fragment, null,
                         react.createElement("p", { className: "dsh-uak-authHint" }, "在显示和隐藏栏目之间拖动厂商，点击保存后应用。"),
@@ -2025,7 +2387,15 @@ const BALANCE_SLOT = "sidebar.footer.action";
                 reorderVendor,
                 SUBSCRIPTION_VENDORS,
                 vendorForModel,
+                vendorForProvider,
+                providerRouteIds,
+                vendorUsesConsoleApiKey,
+                providerNeedsManualModelSetup,
                 activeModelLabel,
+                activeModelSelection,
+                activeModelProvider,
+                quotaRowAmount,
+                quotaRowText,
                 runningSessionIds,
                 endedRunningSessions,
                 AUTO_REFRESH_INTERVAL_MS,

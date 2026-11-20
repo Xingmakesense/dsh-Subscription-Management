@@ -32,22 +32,74 @@
             return known?.name ?? vendor.charAt(0).toUpperCase() + vendor.slice(1);
         }
 
-        /** Which subscription vendor a selected model belongs to, if any. */
+        /**
+         * The exact DSH provider routes a subscription owns.
+         *
+         * The catalog lists them explicitly; a vendor id is always its own
+         * route. Legacy catalogs used `modelAliases` for the same purpose.
+         */
+        function providerRouteIds(vendor) {
+            const explicit = Array.isArray(vendor?.providerIds) ? vendor.providerIds
+                : Array.isArray(vendor?.modelAliases) ? vendor.modelAliases : [];
+            return [vendor?.id, ...explicit]
+                .filter((id) => typeof id === "string" && id.trim().length > 0)
+                .map((id) => id.trim().toLowerCase());
+        }
+
+        /**
+         * Which subscription vendor owns an exact provider route.
+         *
+         * Strict by design: only the **provider** decides, and only on an exact
+         * match. A third-party relay that happens to serve `glm-4.6` is not the
+         * Z.ai subscription, so model names are never evidence on their own.
+         */
+        function vendorForProvider(provider) {
+            if (typeof provider !== "string") return undefined;
+            const route = provider.trim().toLowerCase();
+            if (route.length === 0) return undefined;
+            return SUBSCRIPTION_VENDORS.find((vendor) => providerRouteIds(vendor).includes(route))?.id;
+        }
+
+        /** Which subscription vendor the selected model belongs to, if any. */
         function vendorForModel(model, provider) {
-            const text = `${typeof model === "string" ? model : ""} ${typeof provider === "string" ? provider : ""}`
-                .toLowerCase();
-            if (text.trim().length === 0) return undefined;
-            const route = typeof provider === "string" && provider.length > 0
-                ? provider.toLowerCase()
-                : text.trim().split(/\s+/)[0];
-            const exact = SUBSCRIPTION_VENDORS.find((vendor) =>
-                [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
-                    .some((alias) => route === String(alias).toLowerCase()));
-            if (exact !== undefined) return exact.id;
-            const match = SUBSCRIPTION_VENDORS.find((vendor) =>
-                [vendor.id, ...Array.isArray(vendor.modelAliases) ? vendor.modelAliases : []]
-                    .some((alias) => text.includes(String(alias).toLowerCase())));
-            return match?.id;
+            if (typeof provider === "string" && provider.trim().length > 0) return vendorForProvider(provider);
+            // A bare label counts only when it is exactly a known provider route.
+            return vendorForProvider(model);
+        }
+
+        /**
+         * Amount-valued quota ("等价额度").
+         *
+         * Some subscriptions (Mistral) answer with a monthly budget in money or
+         * credits instead of a percentage. The row keeps `used`/`limit` in that
+         * native unit and flags `unit`, so the card shows the remaining
+         * equivalent amount and only then the derived percentage.
+         */
+        function quotaRowAmount(row) {
+            if (row?.unit !== "amount" && row?.unit !== "credits" && row?.unit !== "tokens") return undefined;
+            if (!Number.isFinite(row?.limit) || !Number.isFinite(row?.used)) return undefined;
+            const remaining = Math.max(0, row.limit - row.used);
+            return {
+                unit: row.unit,
+                currency: typeof row.currency === "string" && row.currency.length > 0 ? row.currency : undefined,
+                remaining,
+                used: row.used,
+                limit: row.limit
+            };
+        }
+
+        /** Card text for one quota row: an equivalent amount when the vendor quotes one. */
+        function quotaRowText(row) {
+            const amount = quotaRowAmount(row);
+            if (amount !== undefined) {
+                if (amount.currency !== undefined) {
+                    const money = formatCurrencyAmount(amount.remaining, amount.currency);
+                    if (money !== undefined) return money;
+                }
+                const suffix = amount.unit === "credits" ? " credits" : amount.unit === "tokens" ? " tokens" : "";
+                return `${formatQuotaNumber(amount.remaining)}${suffix}`;
+            }
+            return formatQuotaPercent(remainingPercentOf(row));
         }
 
         /** Pure card projection, also used by regression tests. */
@@ -64,13 +116,15 @@
             ) ?? "—";
             const views = slots.map((slot) => {
                 const percent = remainingPercentOf(slot.row);
+                const amount = quotaRowAmount(slot.row);
                 return {
                     id: slot.id,
                     label: slot.label,
                     bar: slot.bar === true,
                     depth: Number.isFinite(slot.depth) ? slot.depth : 0,
                     percent,
-                    text: formatQuotaPercent(percent),
+                    amount,
+                    text: quotaRowText(slot.row),
                     resetAt: slot.row?.resetAt
                 };
             });
@@ -81,10 +135,14 @@
                 lines.push(`${vendorName}：额度未提供`);
             }
             for (const view of views) {
-                if (view.percent === undefined) {
+                const reset = view.resetAt ? `，重置 ${formatResetAt(view.resetAt)}` : "";
+                if (view.amount !== undefined) {
+                    const percent = view.percent === undefined ? "" : `（剩余 ${Math.round(view.percent)}%）`;
+                    lines.push(`${vendorName} ${view.label}：剩余等价额度 ${view.text}${percent}${reset}`);
+                } else if (view.percent === undefined) {
                     lines.push(`${vendorName} ${view.label}：未提供`);
                 } else {
-                    lines.push(`${vendorName} ${view.label}：剩余 ${Math.round(view.percent)}%${view.resetAt ? `，重置 ${formatResetAt(view.resetAt)}` : ""}`);
+                    lines.push(`${vendorName} ${view.label}：剩余 ${Math.round(view.percent)}%${reset}`);
                 }
             }
             const month = monthQuotaInfo(kimiState?.usage);
@@ -358,18 +416,38 @@
                 percent);
         }
 
-        /** Current session's selected model, used to pick the vendor to show. */
-        function activeModelLabel(state) {
+        /** Current session's model selection, split into provider and model. */
+        function activeModelSelection(state) {
             const sessions = state?.byId ?? {};
             const current = Object.values(sessions).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)
                 ?? Object.values(sessions).find((session) => session?.id !== undefined && session?.running === true);
             if (current === undefined) return undefined;
             const values = state?.projectionsBySession?.[current.id]?.values ?? {};
             const selection = values.modelSelection?.next ?? values.modelSelection;
-            if (typeof selection === "string") return selection;
+            if (typeof selection === "string") return { model: selection };
             const model = selection?.model ?? selection?.modelId ?? selection?.id;
             const provider = selection?.provider ?? selection?.providerId ?? selection?.directory ?? selection?.vendor;
-            return [provider, model].filter((part) => typeof part === "string" && part.length > 0).join(" ") || undefined;
+            const hasModel = typeof model === "string" && model.length > 0;
+            const hasProvider = typeof provider === "string" && provider.length > 0;
+            if (!hasModel && !hasProvider) return undefined;
+            return {
+                ...(hasProvider ? { provider } : {}),
+                ...(hasModel ? { model } : {})
+            };
+        }
+
+        /** Display label for the selected model. */
+        function activeModelLabel(state) {
+            const selection = activeModelSelection(state);
+            if (selection === undefined) return undefined;
+            return [selection.provider, selection.model]
+                .filter((part) => typeof part === "string" && part.length > 0)
+                .join(" ") || undefined;
+        }
+
+        /** Exact DSH provider route of the selected model; the only vendor signal. */
+        function activeModelProvider(state) {
+            return activeModelSelection(state)?.provider;
         }
 
         /**
@@ -417,6 +495,7 @@
             const sessionsHook = typeof useSessions === "function" ? useSessions : useNoSessions;
             const runningIds = sessionsHook(runningSessionIds);
             const modelLabel = sessionsHook(activeModelLabel);
+            const modelProvider = sessionsHook(activeModelProvider);
             const view = balanceCardView(kimiState, deepState, modelLabel);
             const previousRunning = react.useRef(runningIds);
             react.useEffect(() => {
@@ -450,10 +529,11 @@
                 if (typeof timer?.unref === "function") timer.unref();
                 return () => clearInterval(timer);
             }, [refreshAll]);
-            // One initialization request. Unknown models keep the last vendor and
-            // never trigger a refresh; a known model change switches exactly once.
+            // One initialization request. A subscription is chosen only from the
+            // exact provider route: an unrecognized route keeps the last vendor and
+            // never triggers a refresh, a recognized one switches exactly once.
             react.useEffect(() => {
-                const vendor = vendorForModel(modelLabel);
+                const vendor = vendorForModel(modelLabel, modelProvider);
                 if (vendor !== undefined) {
                     initialRequested.current = true;
                     if (vendor === preferredVendor.current) return;
@@ -466,7 +546,7 @@
                 const initial = preferredVendor.current ?? subscriberVendor;
                 preferredVendor.current = initial;
                 refreshKimi(false, initial);
-            }, [modelLabel, subscriberVendor, refreshKimi, rpc]);
+            }, [modelLabel, modelProvider, subscriberVendor, refreshKimi, rpc]);
 
             if (narrow) {
                 return react.createElement(

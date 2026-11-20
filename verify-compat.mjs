@@ -158,15 +158,30 @@ function atLeast(actual, minimum) {
     return true;
 }
 
+/**
+ * Read one entry out of an asar archive.
+ *
+ * The archive starts with a Chromium Pickle: [u32 size-of-size][u32 header
+ * pickle size], then the header pickle itself. Depending on the Electron
+ * version the JSON string is preceded by one or two more u32 fields, so the
+ * reader locates the opening brace instead of assuming a fixed prefix, and
+ * derives the payload area from the pickle size.
+ */
 function readAsarFile(asar, target) {
     const fd = openSync(asar, "r");
     try {
         const head = Buffer.alloc(16);
         readSync(fd, head, 0, 16, 0);
-        const headerSize = head.readUInt32LE(12);
-        const headerBuffer = Buffer.alloc(headerSize);
-        readSync(fd, headerBuffer, 0, headerSize, 16);
-        const header = JSON.parse(headerBuffer.toString("utf8").replace(/\0+$/u, ""));
+        const headerPickleSize = head.readUInt32LE(4);
+        if (!Number.isFinite(headerPickleSize) || headerPickleSize <= 0 || headerPickleSize > 64 * 1024 * 1024) {
+            return undefined;
+        }
+        const headerBuffer = Buffer.alloc(headerPickleSize);
+        readSync(fd, headerBuffer, 0, headerPickleSize, 8);
+        const headerText = headerBuffer.toString("utf8");
+        const jsonStart = headerText.indexOf("{");
+        if (jsonStart < 0) return undefined;
+        const header = JSON.parse(headerText.slice(jsonStart).replace(/[\0\s]+$/u, ""));
         const parts = target.split("/");
         let node = header;
         for (const part of parts) {
@@ -175,7 +190,7 @@ function readAsarFile(asar, target) {
         }
         if (node.files !== undefined) return undefined;
         const body = Buffer.alloc(Number(node.size));
-        readSync(fd, body, 0, body.length, 16 + headerSize + Number(node.offset));
+        readSync(fd, body, 0, body.length, 8 + headerPickleSize + Number(node.offset));
         return body.toString("utf8");
     } finally {
         closeSync(fd);
@@ -196,12 +211,19 @@ if (asar === undefined) {
     const conversation = readAsarFile(asar, "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js") ?? "";
     const sidebar = readAsarFile(asar, "dsh/node_modules/@deepseek-ai/dsh-client-ui-sidebar/lib/client.js") ?? "";
     const preload = readAsarFile(asar, "lib/preload-app.cjs") ?? "";
-    assert.equal(conversation.includes('"conversation.input.right"'), true, "installed conversation lacks the right slot");
-    assert.equal(sidebar.includes('"sidebar.brand.name"'), true, "installed sidebar lacks the brand-name slot");
-    assert.equal(sidebar.includes('"sidebar.footer.action"'), true, "installed sidebar lacks the quota footer slot");
-    assert.equal(sidebar.includes('"sidebar.settings"'), true, "installed sidebar lacks the settings section seat");
-    assert.equal(sidebar.includes('renderSlot("sidebar.footer.action", { wide })'), true,
+    // Bundlers may emit the same call with backticks, spaces or a different
+    // quote style; compare a normalized form instead of one exact spelling.
+    const normalize = (source) => source.replaceAll("`", '"');
+    const compact = (source) => normalize(source).replace(/\s+/gu, "");
+    const conversationCode = normalize(conversation);
+    const sidebarCode = normalize(sidebar);
+    assert.equal(sidebarCode.includes('"sidebar.brand.name"'), true, "installed sidebar lacks the brand-name slot");
+    assert.equal(sidebarCode.includes('"sidebar.footer.action"'), true, "installed sidebar lacks the quota footer slot");
+    assert.equal(sidebarCode.includes('"sidebar.settings"'), true, "installed sidebar lacks the settings section seat");
+    assert.equal(compact(sidebar).includes('renderSlot("sidebar.footer.action",{wide})'), true,
         "quota footer must receive the sidebar wide/compact layout prop");
+    assert.equal(conversationCode.includes('"conversation.input.right"'), true,
+        "installed conversation lacks the composer right slot");
     assert.equal(preload.includes("data-windows-menu") || preload.includes("windowsMenu"), true,
         "installed desktop no longer exposes the caption menu");
     assert.equal(preload.includes("attachShadow({ mode: \"open\" })"), true,

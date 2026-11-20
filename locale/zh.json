@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "dsh-Subscription-Management",
-    "description": "多厂商订阅认证、真实额度卡片，以及 DeepSeek 余额和今日用量。"
+    "description": "多厂商订阅认证与严格按提供商匹配的额度卡片（Google Antigravity、Mistral 金额型月额度），以及 DeepSeek 余额和今日用量。"
   }
 }

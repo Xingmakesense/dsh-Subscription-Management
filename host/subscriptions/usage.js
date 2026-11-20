@@ -6,6 +6,27 @@ const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const CLAUDE_SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 const KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
 const KIRO_REFRESH_URL = "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken";
+// Google Antigravity (agy) consumer endpoints, Daily primary + sandbox disaster
+// recovery. Reverse-engineered from the agy CLI; see README.
+const ANTIGRAVITY_ENDPOINTS = Object.freeze([
+    "https://daily-cloudcode-pa.googleapis.com",
+    "https://daily-cloudcode-pa.sandbox.googleapis.com"
+]);
+const ANTIGRAVITY_USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo";
+/** Only `antigravity/cli/` clients at or above 1.3.0 receive the Argon group. */
+const ANTIGRAVITY_UA_FALLBACK_VERSION = "1.5.10";
+/**
+ * Antigravity's Google consumer-OAuth client pair is NOT bundled here.
+ *
+ * Refresh only ever applies to a credential the user pasted manually; the user
+ * supplies the client pair through the environment instead of this repository
+ * carrying a third party's OAuth secret.
+ */
+function antigravityClientCredentials() {
+    const clientId = text(process.env?.AGY_CLIENT_ID);
+    const clientSecret = text(process.env?.AGY_CLIENT_SECRET);
+    return clientId === undefined || clientSecret === undefined ? undefined : { clientId, clientSecret };
+}
 
 export class SubscriptionUsageError extends Error {
     constructor(code, message, options = {}) {
@@ -83,7 +104,7 @@ function windowSeconds(value) {
     return { duration: seconds, unit: "second" };
 }
 
-function makeRow({ name, window, used, limit, remainingPercent, resetAt }) {
+function makeRow({ name, window, used, limit, remainingPercent, resetAt, unit, currency }) {
     const cleanUsed = nonNegative(used);
     const cleanLimit = nonNegative(limit);
     let percent = nonNegative(remainingPercent);
@@ -93,14 +114,24 @@ function makeRow({ name, window, used, limit, remainingPercent, resetAt }) {
         percent = clamp((cleanLimit - cleanUsed) / cleanLimit * 100, 0, 100);
     }
     if (cleanUsed === undefined && cleanLimit === undefined && percent === undefined) return null;
+    const cleanUnit = ["amount", "credits", "tokens"].includes(unit) ? unit : undefined;
     return {
         ...(text(name) ? { name: text(name) } : {}),
         ...(isObject(window) ? { window } : {}),
         used: cleanUsed,
         limit: cleanLimit,
         remainingPercent: percent,
-        ...(iso(resetAt) ? { resetAt: iso(resetAt) } : {})
+        ...(iso(resetAt) ? { resetAt: iso(resetAt) } : {}),
+        // A vendor that quotes an equivalent amount instead of a percentage
+        // keeps the native unit so the card can show money/credits directly.
+        ...(cleanUnit === undefined ? {} : { unit: cleanUnit }),
+        ...(cleanUnit !== "amount" || !text(currency) ? {} : { currency: text(currency).toUpperCase() })
     };
+}
+
+/** A quota row quoted as an equivalent amount (currency/credits), not a percentage. */
+function amountRow(name, window, { used, limit, currency, resetAt, unit = "amount" } = {}) {
+    return makeRow({ name, window, used, limit, resetAt, unit, currency });
 }
 
 function percentRow(name, window, remainingPercent, resetAt) {
@@ -110,11 +141,15 @@ function percentRow(name, window, remainingPercent, resetAt) {
     return makeRow({ name, window, used: 100 - bounded, limit: 100, remainingPercent: bounded, resetAt });
 }
 
-function result(options, { summary = null, limits = [], extraUsage = null, plan, accountName } = {}) {
+function result(options, { summary = null, limits = [], extraUsage = null, details = [], plan, accountName } = {}) {
+    const cleanDetails = (Array.isArray(details) ? details : [])
+        .filter((entry) => isObject(entry) && text(entry.label) !== undefined && text(entry.text) !== undefined)
+        .map((entry) => ({ label: text(entry.label), text: text(entry.text) }));
     return {
         summary,
         limits: limits.filter(Boolean),
         extraUsage,
+        ...(cleanDetails.length > 0 ? { details: cleanDetails } : {}),
         ...(text(plan) ? { plan: text(plan) } : {}),
         ...(text(accountName) ? { accountName: text(accountName) } : {}),
         fetchedAt: options.now
@@ -710,6 +745,180 @@ export function parseGeminiUsage(payload, input) {
     return result(options, { limits, plan: text(options.plan) });
 }
 
+/**
+ * Google Antigravity quota.
+ *
+ * Two windows are enforced by the backend: a rolling 5-hour window and a weekly
+ * one. A plan may expose several groups (Gemini, the 3P Claude/GPT pool and a
+ * Pro/Ultra-only "Gemini 4 Argon" pool), each with its own pair of buckets.
+ *
+ * The card keeps two numbers, so the rows carry the BINDING (lowest remaining)
+ * bucket per window and `details` lists every group for the account panel.
+ * Proto3 JSON omits a zero-valued `remainingFraction`: a bucket with a reset
+ * instant but no fraction is exhausted, never unknown.
+ */
+function antigravityUserAgent() {
+    const configured = text(process.env?.ANTIGRAVITY_AGY_VERSION);
+    const version = configured !== undefined && /^\d+\.\d+\.\d+$/u.test(configured)
+        ? configured
+        : ANTIGRAVITY_UA_FALLBACK_VERSION;
+    const platform = process.platform === "win32" ? "windows" : process.platform;
+    const arch = process.arch === "x64" ? "amd64" : process.arch;
+    return `antigravity/cli/${version} (aidev_client; os_type=${platform}; arch=${arch}; auth_method=consumer)`;
+}
+
+function antigravityFraction(bucket) {
+    const raw = nonNegative(bucket?.remainingFraction);
+    if (raw !== undefined) return clamp(raw, 0, 1);
+    if (typeof bucket?.resetTime === "string" && bucket.resetTime.trim() !== "") return 0;
+    if (number(bucket?.remainingAmount) === 0) return 0;
+    return undefined;
+}
+
+function antigravityWindow(bucket) {
+    const label = `${text(bucket?.window) ?? ""} ${text(bucket?.bucketId) ?? ""} ${text(bucket?.displayName) ?? ""}`.toLowerCase();
+    if (/5h|5-hour|five[_-]?hour/u.test(label)) return { duration: 5, unit: "hour" };
+    if (/week|weekly/u.test(label)) return { duration: 1, unit: "week" };
+    return undefined;
+}
+
+function antigravityGroupLabel(group) {
+    const name = text(group?.displayName) ?? text(group?.description) ?? "Antigravity";
+    // A dedicated Argon pool is proven by the GROUP NAME or its bucket ids.
+    // The description is NOT evidence: agy >= 1.5.12 describes the shared
+    // Gemini group as "…Gemini 4 Neon, Gemini 4 Carbon, Gemini 4 Argon…".
+    const buckets = Array.isArray(group?.buckets) ? group.buckets : [];
+    const dedicatedArgon = /argon/iu.test(text(group?.displayName) ?? "")
+        || buckets.some((bucket) => /argon/iu.test(text(bucket?.bucketId) ?? "")
+            || /argon/iu.test(text(bucket?.displayName) ?? ""));
+    if (dedicatedArgon) return "Gemini Argon";
+    if (/claude|gpt/iu.test(name)) return "Claude / GPT";
+    if (/gemini|google/iu.test(name)) return "Gemini";
+    return name;
+}
+
+/** Model-family fallback when the summary endpoint refuses the account (free tier). */
+function antigravityFamilyOf(modelId) {
+    const id = String(modelId ?? "").toLowerCase();
+    if (id.includes("argon")) return "Gemini Argon";
+    if (id.includes("claude")) return "Claude";
+    if (id.includes("gpt")) return "GPT";
+    if (id.includes("gemini") || id.includes("gemma")) return "Gemini";
+    return undefined;
+}
+
+export function parseAntigravityUsage(payload, input) {
+    const options = optionsOf(input);
+    const vendor = { id: "antigravity", name: "Google Antigravity" };
+    if (!isObject(payload)) throw parseFail(vendor);
+    const groups = [];
+    if (Array.isArray(payload.groups)) groups.push(...payload.groups);
+    if (Array.isArray(payload.buckets) && payload.buckets.length > 0) {
+        groups.push({ displayName: payload.description, buckets: payload.buckets });
+    }
+    const readings = [];
+    for (const group of groups) {
+        if (!isObject(group)) continue;
+        const label = antigravityGroupLabel(group);
+        for (const bucket of Array.isArray(group.buckets) ? group.buckets : []) {
+            if (!isObject(bucket)) continue;
+            const window = antigravityWindow(bucket);
+            const fraction = antigravityFraction(bucket);
+            if (window === undefined || fraction === undefined) continue;
+            readings.push({ label, window, fraction, resetAt: bucket.resetTime });
+        }
+    }
+    // Per-model fallback: `fetchAvailableModels` carries one bucket per model.
+    if (readings.length === 0 && isObject(payload.models)) {
+        const families = new Map();
+        for (const [modelId, entry] of Object.entries(payload.models)) {
+            if (!isObject(entry)) continue;
+            const family = antigravityFamilyOf(modelId);
+            const fraction = antigravityFraction(entry.quotaInfo ?? {});
+            if (family === undefined || fraction === undefined) continue;
+            const resetAt = entry.quotaInfo?.resetTime;
+            const known = families.get(family);
+            if (known === undefined || fraction < known.fraction) families.set(family, { fraction, resetAt });
+        }
+        for (const [family, reading] of families) {
+            readings.push({ label: family, window: undefined, fraction: reading.fraction, resetAt: reading.resetAt });
+        }
+    }
+    if (readings.length === 0) throw parseFail(vendor);
+
+    const binding = (unit) => readings
+        .filter((reading) => reading.window?.unit === unit)
+        .sort((left, right) => left.fraction - right.fraction)[0];
+    const five = binding("hour");
+    const week = binding("week");
+    const unbounded = readings.filter((reading) => reading.window === undefined);
+    const row = (reading, name) => reading === undefined
+        ? null
+        : percentRow(name, reading.window, reading.fraction * 100, reading.resetAt);
+
+    const limits = [row(week, "周额度")];
+    // Without window metadata (per-model fallback) every family is its own row.
+    for (const reading of unbounded) limits.push(row(reading, reading.label));
+    const unitCount = (unit) => readings.filter((reading) => reading.window?.unit === unit).length;
+    const windowLabel = (unit) => unit === "hour" ? "5小时" : unit === "week" ? "周" : "额度";
+    // Only multi-group plans add detail lines; a single group is already the row.
+    const details = readings
+        .filter((reading) => reading.window === undefined || unitCount(reading.window.unit) > 1)
+        .map((reading) => ({
+            label: `${reading.label} ${windowLabel(reading.window?.unit)}`,
+            text: `${Math.round(reading.fraction * 100)}%`
+        }));
+
+    return result(options, {
+        summary: row(five, "5小时"),
+        limits,
+        details,
+        plan: text(options.plan) ?? titlePlan(payload.description) ?? (five !== undefined || week !== undefined ? "Antigravity" : undefined)
+    });
+}
+
+/**
+ * Mistral monthly billing budget (`GET /v1/billing/budget`).
+ *
+ * This subscription quotes an EQUIVALENT AMOUNT, not a percentage: the response
+ * carries `initial_budget` in a currency plus `usage_percentage` consumed, with
+ * a calendar-month reset. Rows therefore keep the native money unit and the
+ * card prints the remaining amount (the derived percentage is secondary).
+ * `api_budget` (Studio/API) is optional per plan; `vibe_budget` is the Vibe
+ * Code allowance.
+ */
+function mistralBudgetRow(detail, name) {
+    if (!isObject(detail)) return null;
+    const limit = nonNegative(detail.initial_budget);
+    if (limit === undefined) return null;
+    const usedPercent = detail.usage_percentage === undefined
+        ? undefined
+        : clamp(number(detail.usage_percentage) ?? 0, 0, 100);
+    return amountRow(name, { duration: 1, unit: "month" }, {
+        used: usedPercent === undefined ? undefined : limit * usedPercent / 100,
+        limit,
+        currency: text(detail.currency),
+        resetAt: detail.reset_at
+    });
+}
+
+export function parseMistralUsage(payload, input) {
+    const options = optionsOf(input);
+    const vendor = { id: "mistral", name: "Mistral" };
+    if (!isObject(payload)) throw parseFail(vendor);
+    const api = mistralBudgetRow(payload.api_budget, "API 月度额度");
+    const vibe = mistralBudgetRow(payload.vibe_budget, "Vibe Code 月度额度");
+    const rows = [api, vibe].filter(Boolean);
+    if (rows.length === 0) throw parseFail(vendor);
+    // Headline: the API budget when the plan reports one with a real allowance.
+    const summary = rows.find((row) => Number.isFinite(row.limit) && row.limit > 0) ?? api ?? vibe;
+    return result(options, {
+        summary,
+        limits: rows.filter((row) => row !== summary),
+        plan: text(options.plan)
+    });
+}
+
 function kiroPool(raw, name, window, resetAt) {
     if (!isObject(raw)) return null;
     return makeRow({
@@ -912,7 +1121,7 @@ async function refreshOAuth(vendor, credential, context) {
     if (credential.source !== "manual") {
         throw fail(vendor, "AUTH", `${vendorName(vendor)} OAuth 凭据不归本模块所有，请重新连接`);
     }
-    if (!["chatgpt", "claude", "kiro", "kimi"].includes(vendor.id)) {
+    if (!["chatgpt", "claude", "kiro", "kimi", "antigravity"].includes(vendor.id)) {
         throw fail(vendor, "AUTH", `${vendorName(vendor)} 不支持安全刷新此 OAuth 记录，请重新登录后更新凭据`);
     }
     const refresh = text(credential.secret.refresh);
@@ -936,6 +1145,20 @@ async function refreshOAuth(vendor, credential, context) {
         url = KIRO_REFRESH_URL;
         init = { method: "POST", headers: { "content-type": "application/json", accept: "application/json" },
             body: JSON.stringify({ refreshToken: refresh }) };
+    } else if (vendor.id === "antigravity") {
+        const credentials = antigravityClientCredentials();
+        if (credentials === undefined) {
+            throw fail(vendor, "AUTH",
+                "Antigravity OAuth 刷新需要先设置环境变量 AGY_CLIENT_ID / AGY_CLIENT_SECRET；也可以重新运行 agy 登录后导入凭据文件");
+        }
+        url = "https://oauth2.googleapis.com/token";
+        init = { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+            body: formBody({
+                grant_type: "refresh_token",
+                client_id: credentials.clientId,
+                client_secret: credentials.clientSecret,
+                refresh_token: refresh
+            }) };
     } else {
         url = "https://auth.kimi.com/api/oauth/token";
         init = { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
@@ -977,6 +1200,23 @@ async function prepareOAuth(vendor, credential, context, force) {
         return refreshOAuth(vendor, credential, context);
     }
     return credential;
+}
+
+/**
+ * A usable OAuth access token for outbound provider traffic.
+ *
+ * This plugin only refreshes records it owns; a CLI-linked credential is
+ * re-read from the official file by `resolveVendorCredential` and is never
+ * rewritten here.
+ */
+export async function ensureFreshOAuth(vendor, credential, { now = Date.now(), writeCredential } = {}) {
+    requireKinds(vendor, credential, ["oauth"]);
+    const expires = number(credential.secret.expires);
+    const stale = expires !== undefined && expires <= now + REFRESH_LEEWAY_MS;
+    const current = stale ? await refreshOAuth(vendor, credential, { now, writeCredential }) : credential;
+    const access = text(current.secret.access);
+    if (access === undefined) throw fail(vendor, "AUTH", `${vendorName(vendor)} OAuth access token 缺失，请重新连接`);
+    return { credential: current, access };
 }
 
 async function oauthRequest(vendor, credential, context, operation) {
@@ -1249,6 +1489,65 @@ async function fetchTrae(vendor, credential, context) {
     return parseTraeUsage(assertResponse(vendor, response, credential), context);
 }
 
+async function antigravityCall(vendor, operation, headers) {
+    let lastError;
+    for (const base of ANTIGRAVITY_ENDPOINTS) {
+        try {
+            return await requestVendor(vendor, `${base}/${operation}`, { method: "POST", headers, body: "{}" });
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError ?? parseFail(vendor);
+}
+
+async function fetchMistral(vendor, credential, context) {
+    requireKinds(vendor, credential, ["api-key"]);
+    const headers = { authorization: `Bearer ${credential.secret}`, accept: "application/json" };
+    const budget = await requestVendor(vendor, "https://api.mistral.ai/v1/billing/budget", { headers });
+    // A 403 is the account missing `see_org_inference_usage`, not a bad key.
+    if (budget.response.status === 403) {
+        throw fail(vendor, "AUTH",
+            "Mistral 接受了 API Key，但账号没有 see_org_inference_usage 权限，无法读取月度账单额度；请联系组织管理员授权");
+    }
+    const payload = assertResponse(vendor, budget, credential);
+    let plan;
+    try {
+        const subscription = await requestVendor(vendor, "https://api.mistral.ai/v1/billing/subscription", { headers });
+        if (subscription.response.ok) plan = text(subscription.payload?.plan_name);
+    } catch {
+        // The plan label is optional; the budget is the reading.
+    }
+    return parseMistralUsage(payload, { ...context, plan });
+}
+
+async function fetchAntigravity(vendor, credential, context) {
+    requireKinds(vendor, credential, ["oauth"]);
+    let usedFallback = false;
+    const { payload } = await oauthRequest(vendor, credential, context, async (secret) => {
+        // The backend fingerprints this exact header set; adding a client id
+        // or an Accept value that the real CLI does not send is a mismatch.
+        const headers = {
+            authorization: `Bearer ${secret.access}`,
+            "content-type": "application/json",
+            "user-agent": antigravityUserAgent()
+        };
+        const summary = await antigravityCall(vendor, "v1internal:retrieveUserQuotaSummary", headers);
+        if (summary.response.ok) return summary;
+        // A free-tier account has no 5h summary window (403 PERMISSION_DENIED),
+        // but the per-model quota endpoint still answers for it. Any other
+        // status is a real upstream fault and must surface as such.
+        if (![403, 404].includes(summary.response.status)) return summary;
+        const models = await antigravityCall(vendor, "v1internal:fetchAvailableModels", headers);
+        if (models.response.ok) {
+            usedFallback = true;
+            return models;
+        }
+        return summary;
+    });
+    return parseAntigravityUsage(payload, { ...context, plan: usedFallback ? undefined : context.plan });
+}
+
 async function fetchGemini(vendor, credential, context) {
     requireKinds(vendor, credential, ["oauth"]);
     let metadata = {};
@@ -1294,6 +1593,8 @@ const FETCHERS = {
     minimax: fetchMiniMax,
     trae: fetchTrae,
     gemini: fetchGemini,
+    antigravity: fetchAntigravity,
+    mistral: fetchMistral,
     clinepass: fetchClinePass
 };
 
@@ -1320,6 +1621,8 @@ export const usageTest = Object.freeze({
     parseMiniMaxUsage,
     parseDevinUsage,
     parseGeminiUsage,
+    parseAntigravityUsage,
+    parseMistralUsage,
     parseKiroUsage,
     parseTraeUsage,
     parseKiloUsage,

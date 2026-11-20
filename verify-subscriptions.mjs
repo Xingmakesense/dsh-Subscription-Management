@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHandler } from "./host/accounts.js";
 import { subscriptionHandlerTest } from "./host/subscriptions/index.js";
-import { SUBSCRIPTION_VENDORS } from "./host/subscriptions/catalog.js";
+import { SUBSCRIPTION_VENDORS, vendorAllowsAutoModelSetup } from "./host/subscriptions/catalog.js";
 import {
     credentialFromInput,
     credentialIsExpired,
@@ -13,6 +13,8 @@ import {
     vendorCredentialName
 } from "./host/subscriptions/credentials.js";
 import {
+    ensureFreshOAuth,
+    parseAntigravityUsage,
     parseClaudeUsage,
     parseCodexUsage,
     parseDevinUsage,
@@ -22,6 +24,7 @@ import {
     parseKimiUsage,
     parseKiroUsage,
     parseMiniMaxUsage,
+    parseMistralUsage,
     parseQwenUsage,
     parseTraeUsage
 } from "./host/subscriptions/usage.js";
@@ -130,6 +133,89 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
     });
     assert.equal(trae.limits[0].remainingPercent, 75);
     assert.equal(trae.plan, "Pro");
+    // Google Antigravity: 5h + weekly buckets per group. The binding (lowest)
+    // bucket wins the row; multi-group plans also list every group.
+    const agy = parseAntigravityUsage({
+        description: "Antigravity",
+        groups: [
+            {
+                displayName: "Gemini Models",
+                description: "Models within this group: Gemini 4 Neon, Gemini 4 Argon",
+                buckets: [
+                    { bucketId: "gemini-5h", window: "5h", remainingFraction: 0.8, resetTime: "2026-10-27T05:00:00Z" },
+                    { bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.5, resetTime: "2026-10-30T00:00:00Z" }
+                ]
+            },
+            {
+                displayName: "Claude and GPT models",
+                buckets: [
+                    { bucketId: "3p-5h", window: "5h", remainingFraction: 0.25, resetTime: "2026-10-27T05:00:00Z" },
+                    // proto3 omits a 0.0 fraction: a reset instant alone means exhausted.
+                    { bucketId: "3p-weekly", window: "weekly", resetTime: "2026-10-30T00:00:00Z" }
+                ]
+            }
+        ]
+    });
+    assert.equal(agy.summary.window.unit, "hour");
+    assert.equal(agy.summary.window.duration, 5);
+    assert.equal(agy.summary.remainingPercent, 25, "the binding 5h bucket across groups wins");
+    assert.equal(agy.limits[0].window.unit, "week");
+    assert.equal(agy.limits[0].remainingPercent, 0, "an omitted remainingFraction with a reset instant is exhausted");
+    assert.equal(agy.details.length, 4, "every group is listed when several share a window");
+    assert.equal(agy.plan, "Antigravity");
+    const agyFallback = parseAntigravityUsage({
+        models: {
+            "gemini-3-pro": { quotaInfo: { remainingFraction: 0.6, resetTime: "2026-10-30T00:00:00Z" } },
+            "claude-sonnet-4": { quotaInfo: { remainingFraction: 0.2 } },
+            "gpt-oss-120b": { quotaInfo: { remainingFraction: 0.9 } },
+            "unknown-model": { quotaInfo: { remainingFraction: 1 } }
+        }
+    });
+    assert.equal(agyFallback.summary, null, "the per-model fallback has no window to report");
+    assert.deepEqual(agyFallback.limits.map((row) => row.name), ["Gemini", "Claude", "GPT"],
+        "the free-tier fallback keeps one row per model family and drops unknown models");
+    // A shared Gemini group DESCRIBES its members (agy >= 1.5.12 lists "Gemini 4
+    // Argon") but its name does not make it a dedicated Argon pool.
+    const agyArgon = parseAntigravityUsage({
+        groups: [
+            {
+                displayName: "Gemini Models",
+                description: "Models within this group: Gemini 4 Neon, Gemini 4 Carbon, Gemini 4 Argon",
+                buckets: [{ bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.9 }]
+            },
+            {
+                displayName: "Gemini 4 Argon",
+                buckets: [{ bucketId: "gemini-argon-wtu-weekly", window: "weekly", remainingFraction: 0.4 }]
+            }
+        ]
+    });
+    assert.equal(agyArgon.summary, null);
+    assert.equal(agyArgon.limits[0].remainingPercent, 40, "the dedicated Argon pool is the binding weekly bucket");
+    assert.deepEqual(agyArgon.details.map((detail) => detail.label), ["Gemini 周", "Gemini Argon 周"],
+        "only the group name or bucket ids prove a dedicated Argon pool");
+    assert.throws(() => parseAntigravityUsage({ groups: [] }), /格式无效/);
+
+    // Mistral: monthly EQUIVALENT AMOUNT (currency), never a percentage.
+    const mistral = parseMistralUsage({
+        api_budget: { usage_percentage: 25, initial_budget: 40, currency: "usd", reset_at: "2026-11-01T00:00:00Z" },
+        vibe_budget: { usage_percentage: 10, initial_budget: 20, currency: "USD", reset_at: "2026-11-01T00:00:00Z", payg_enabled: false }
+    }, { plan: "Mistral Pro" });
+    assert.equal(mistral.summary.unit, "amount");
+    assert.equal(mistral.summary.window.unit, "month");
+    assert.equal(mistral.summary.limit, 40);
+    assert.equal(mistral.summary.used, 10);
+    assert.equal(mistral.summary.remainingPercent, 75);
+    assert.equal(mistral.summary.currency, "USD");
+    assert.equal(mistral.limits.length, 1);
+    assert.equal(mistral.limits[0].name, "Vibe Code 月度额度");
+    assert.equal(mistral.limits[0].remainingPercent, 90);
+    assert.equal(mistral.plan, "Mistral Pro");
+    const vibeOnly = parseMistralUsage({ vibe_budget: { usage_percentage: 0, initial_budget: 15, currency: "EUR" } });
+    assert.equal(vibeOnly.summary.name, "Vibe Code 月度额度");
+    assert.equal(vibeOnly.limits.length, 0);
+    assert.equal(vibeOnly.summary.remainingPercent, 100);
+    assert.throws(() => parseMistralUsage({ vibe_budget: null }), /格式无效/);
+
     const kilo = parseKiloUsage([
         { result: { data: { json: { creditBlocks: [{ amount_mUsd: 100_000_000, balance_mUsd: 25_000_000 }] } } } },
         { result: { data: { json: null } } }
@@ -191,6 +277,30 @@ globalThis.fetch = async (input, init = {}) => {
                 primary_window: { used_percent: 6, limit_window_seconds: 18000, reset_at: 1738300000 },
                 secondary_window: { used_percent: 24, limit_window_seconds: 604800, reset_at: 1738900000 }
             }
+        });
+    }
+    if (url === "https://api.mistral.ai/v1/billing/budget") {
+        if (bearer !== "Bearer mistral-good") return json({ message: "invalid api key" }, 401);
+        return json({
+            api_budget: { usage_percentage: 25, initial_budget: 40, currency: "USD", reset_at: "2026-11-01T00:00:00Z" },
+            vibe_budget: { usage_percentage: 10, initial_budget: 20, currency: "USD", reset_at: "2026-11-01T00:00:00Z" }
+        });
+    }
+    if (url === "https://api.mistral.ai/v1/billing/subscription") {
+        if (bearer !== "Bearer mistral-good") return json({ message: "invalid api key" }, 401);
+        return json({ plan_name: "Mistral Pro", payg_enabled: false, vibe_payg_enabled: false });
+    }
+    if (url.endsWith("/v1internal:retrieveUserQuotaSummary")) {
+        if (bearer !== "Bearer agy-access") return json({ error: { status: "UNAUTHENTICATED" } }, 401);
+        return json({
+            description: "Antigravity",
+            groups: [{
+                displayName: "Gemini Models",
+                buckets: [
+                    { bucketId: "gemini-5h", window: "5h", remainingFraction: 0.8, resetTime: "2026-10-27T05:00:00Z" },
+                    { bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.5, resetTime: "2026-10-30T00:00:00Z" }
+                ]
+            }]
         });
     }
     throw new Error(`unexpected fixture URL: ${url}`);
@@ -270,6 +380,87 @@ globalThis.fetch = async (input, init = {}) => {
     assert.equal(store.get(`${vendorCredentialName("chatgpt")}_API_CONFIG`).includes("secret-key"), true);
     const deleted = await handler("auth/api-config/delete", { vendor: "chatgpt" });
     assert.equal(deleted.value.status.apiConfigured, false);
+}
+
+// E. New vendors and the strict "no model configuration on the user's behalf"
+//    contract for official subscriptions.
+{
+    assert.deepEqual(
+        SUBSCRIPTION_VENDORS.filter((vendor) => vendor.modelSetup === "auto").map((vendor) => vendor.id).sort(),
+        ["chatgpt", "claude", "clinepass", "commandcode", "opencode-go", "protocom"],
+        "auto covers the four relay families plus the two subscription-login providers this plugin mounts"
+    );
+    // The two OAuth subscriptions own exactly the route this plugin registers,
+    // so a user-installed provider of the same brand never claims their quota.
+    assert.deepEqual(SUBSCRIPTION_VENDORS.find((vendor) => vendor.id === "claude").providerIds, ["claude-subscription"]);
+    assert.deepEqual(SUBSCRIPTION_VENDORS.find((vendor) => vendor.id === "chatgpt").providerIds, ["codex-subscription"]);
+    for (const vendor of SUBSCRIPTION_VENDORS) {
+        assert.ok(Array.isArray(vendor.providerIds) && vendor.providerIds.length > 0,
+            `${vendor.id} must list its exact provider ids`);
+        for (const id of vendor.providerIds) {
+            assert.equal(id, id.toLowerCase(), `${vendor.id} provider id ${id} must be lowercase`);
+        }
+        assert.equal(vendorAllowsAutoModelSetup(vendor), vendor.modelSetup === "auto");
+    }
+    assert.equal(vendorAllowsAutoModelSetup(SUBSCRIPTION_VENDORS.find((vendor) => vendor.id === "mistral")), false);
+    assert.equal(vendorAllowsAutoModelSetup(SUBSCRIPTION_VENDORS.find((vendor) => vendor.id === "antigravity")), false);
+
+    // Mistral quotes an equivalent monthly amount, not a percentage.
+    const mistralSet = await handler("auth/api-key/set", { vendor: "mistral", apiKey: "mistral-good" });
+    assert.equal(mistralSet.value.verified, true, "the billing budget verifies the Mistral key");
+    const mistralUsage = await handler("usage", { vendor: "mistral" });
+    assert.equal(mistralUsage.value.usage.summary.unit, "amount");
+    assert.equal(mistralUsage.value.usage.summary.currency, "USD");
+    assert.equal(mistralUsage.value.usage.summary.limit, 40);
+    assert.equal(mistralUsage.value.usage.summary.remainingPercent, 75);
+    assert.equal(mistralUsage.value.usage.plan, "Mistral Pro");
+    const mistralRejected = await handler("auth/api-key/set", { vendor: "mistral", apiKey: "mistral-bad" });
+    assert.equal(mistralRejected.value.verified, false, "a rejected Mistral key must not verify");
+
+    // Antigravity accepts agy's NESTED token document and reports both windows.
+    const agySet = await handler("auth/token/set", {
+        vendor: "antigravity",
+        kind: "oauth",
+        token: JSON.stringify({
+            token: { access_token: "agy-access", refresh_token: "agy-refresh", expiry: "2099-01-01T00:00:00Z" },
+            auth_method: "consumer"
+        })
+    });
+    assert.equal(agySet.value.verified, true, "the nested agy token document verifies");
+    const agyUsage = await handler("usage", { vendor: "antigravity" });
+    assert.equal(agyUsage.value.usage.summary.remainingPercent, 80);
+    assert.equal(agyUsage.value.usage.limits[0].remainingPercent, 50);
+    const agyStatus = await handler("auth/status");
+    assert.equal(agyStatus.value.vendors.antigravity.configured, true);
+    const agyKey = await handler("auth/api-key/get", { vendor: "antigravity" });
+    assert.equal(agyKey.ok, false, "an OAuth vendor never exposes an API key");
+
+    // The provider runtime asks for a token per request; a stale manual record
+    // is refreshed once and persisted, a fresh one is reused untouched, and an
+    // official CLI file is never rewritten.
+    const chatgpt = SUBSCRIPTION_VENDORS.find((vendor) => vendor.id === "chatgpt");
+    const written = [];
+    const fresh = await ensureFreshOAuth(chatgpt, {
+        kind: "oauth", source: "manual",
+        secret: { access: "codex-access", refresh: "old-refresh", expires: Date.now() + 3_600_000 }
+    }, { writeCredential: (record) => written.push(record) });
+    assert.equal(fresh.access, "codex-access");
+    assert.equal(written.length, 0, "a fresh token is not refreshed");
+    const stale = await ensureFreshOAuth(chatgpt, {
+        kind: "oauth", source: "manual",
+        secret: { access: "old-codex-access", refresh: "old-refresh", expires: Date.now() - 1000 }
+    }, { writeCredential: (record) => written.push(record) });
+    assert.equal(stale.access, "new-codex-access");
+    assert.equal(written.length, 1, "a stale manual token is refreshed and persisted");
+    assert.equal(written[0].secret.expires > Date.now(), true);
+    await assert.rejects(
+        () => ensureFreshOAuth(chatgpt, {
+            kind: "oauth", source: "cli", path: "/fixture/auth.json",
+            secret: { access: "old-codex-access", refresh: "old-refresh", expires: Date.now() - 1000 }
+        }, { writeCredential: () => {} }),
+        /重新运行/,
+        "an official CLI credential must be re-logged in, never rewritten"
+    );
 }
 
 // D. Kimi device flow: complete pending DTO, slow_down backoff, and cancel race.

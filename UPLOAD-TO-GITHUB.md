@@ -10,10 +10,11 @@ node verify-host.cjs
 node verify-client.mjs
 node verify-subscriptions.mjs
 node verify-provider-runtime.mjs
+node verify-channel.mjs
 node verify-compat.mjs
 ```
 
-以上 5 个验证脚本全部通过后再上传。Host 与 provider runtime 的脚本需要能解析 `package.json` 中的依赖（在 DSH profile 内运行，或先安装依赖）；本仓库不包含 `node_modules`。
+以上 6 个验证脚本全部通过后再上传（或直接运行 `pnpm test`，它会先做一次 `--check`）。Host 与 provider runtime 的脚本需要能解析 `package.json` 中的依赖（在 DSH profile 内运行，或先安装依赖）；本仓库不包含 `node_modules`。
 
 ## 创建仓库
 
@@ -37,11 +38,11 @@ node scripts/build-client.mjs
 pnpm pack --pack-destination dist
 ```
 
-将生成的 `.tgz` 上传到 GitHub Releases。版本号为 `1.0.8`，建议标签 `v1.0.8`：
+将生成的 `.tgz` 上传到 GitHub Releases。当前版本号为 `1.2.0`，建议标签 `v1.2.0`：
 
 ```bash
-git tag -a v1.0.8 -m "1.0.8"
-git push origin v1.0.8
+git tag -a v1.2.0 -m "1.2.0"
+git push origin v1.2.0
 ```
 
 ## 必须排除
