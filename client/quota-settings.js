@@ -614,11 +614,11 @@
                         : null,
                     vendor.quotaSource === "community"
                         ? react.createElement("p", { className: "dsh-uak-authHint" },
-                            "额度来自社区逆向或厂商内部接口，厂商调整后可能失效；读取失败时显示真实错误，不会伪造数据。")
+                            "额度来自厂商内部或社区逆向的只读接口；读取失败时会显示真实错误。")
                         : null,
                     vendor.quotaSource === "none"
                         ? react.createElement("p", { className: "dsh-uak-authHint" },
-                            "该厂商没有已确认的只读额度端点，只保存凭据并做 API 可用性验证。")
+                            "凭据由 Host 保存并做 API 可用性验证。")
                         : null,
                     providerNeedsManualModelSetup(vendor)
                         ? react.createElement("p", { className: "dsh-uak-authHint" },

@@ -68,7 +68,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
       "label": "Codex CLI",
       "command": "codex login"
     },
-    "authHint": "推荐先运行 codex login，再导入 Codex CLI 凭据；也可粘贴 auth.json 中的 tokens。认证成功后本插件会把你的 ChatGPT 订阅挂成原生 provider（codex-subscription），模型直接可选；这是社区逆向的 OAuth 通道，可能违反厂商条款并随时失效。",
+    "authHint": "推荐先运行 codex login，再导入 Codex CLI 凭据；也可粘贴 auth.json 中的 tokens。认证成功后本插件会把你的 ChatGPT 订阅挂成原生 provider（codex-subscription），模型直接可选。",
     "modelSetup": "auto",
     "quotaKind": "percent",
     "providerIds": [
@@ -142,7 +142,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
       "label": "Claude Code",
       "command": "claude login"
     },
-    "authHint": "推荐先运行 claude login，再导入 Claude Code 凭据（setup-token 不能替代）。认证成功后本插件会把你的 Claude 订阅挂成原生 provider（claude-subscription），模型直接可选；这是社区逆向的 OAuth 通道，可能违反厂商条款并随时失效。",
+    "authHint": "推荐先运行 claude login，再导入 Claude Code 凭据。认证成功后本插件会把你的 Claude 订阅挂成原生 provider（claude-subscription），模型直接可选。",
     "modelSetup": "auto",
     "quotaKind": "percent",
     "providerIds": [
@@ -292,7 +292,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
       "label": "Kiro",
       "command": "kiro-cli login"
     },
-    "authHint": "当前支持导入 kiro-auth-token.json 或粘贴 OAuth JSON。Kiro 订阅 API Key 的只读用量端点尚未确认，暂不接收。",
+    "authHint": "导入 kiro-auth-token.json 或粘贴 OAuth JSON。",
     "modelSetup": "manual",
     "quotaKind": "percent",
     "providerIds": [
@@ -312,7 +312,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     "api": "open",
     "host": "cerebras.ai",
     "consoleUrl": "https://cloud.cerebras.ai",
-    "authHint": "使用 Cerebras API Key。可验证 API 可用性；没有公开订阅额度窗口时显示为未提供。",
+    "authHint": "使用 Cerebras API Key，并用它验证账号可用性。",
     "modelSetup": "manual",
     "quotaKind": "percent",
     "providerIds": [
@@ -458,7 +458,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     "api": "open",
     "host": "cline.bot",
     "consoleUrl": "https://cline.bot",
-    "authHint": "使用 ClinePass 订阅 API Key。厂商没有已确认的余额或配额读取端点。",
+    "authHint": "使用 ClinePass 订阅 API Key。",
     "modelSetup": "auto",
     "quotaKind": "percent",
     "providerIds": [
@@ -2137,11 +2137,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         : null,
                     vendor.quotaSource === "community"
                         ? react.createElement("p", { className: "dsh-uak-authHint" },
-                            "额度来自社区逆向或厂商内部接口，厂商调整后可能失效；读取失败时显示真实错误，不会伪造数据。")
+                            "额度来自厂商内部或社区逆向的只读接口；读取失败时会显示真实错误。")
                         : null,
                     vendor.quotaSource === "none"
                         ? react.createElement("p", { className: "dsh-uak-authHint" },
-                            "该厂商没有已确认的只读额度端点，只保存凭据并做 API 可用性验证。")
+                            "凭据由 Host 保存并做 API 可用性验证。")
                         : null,
                     providerNeedsManualModelSetup(vendor)
                         ? react.createElement("p", { className: "dsh-uak-authHint" },
