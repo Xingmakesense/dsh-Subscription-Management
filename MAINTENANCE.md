@@ -27,6 +27,7 @@
 5.3 vendored 的 `host/provider-runtime/protocom-api.js` 只允许**追加**导出（当前为 `parseSseUntilEof`、`serializeResponsesRequest`、`translateResponses`），不得改动任何语义或函数体；升级 vendored 上游时先确认这三个符号仍存在。
 5.4 订阅登录 provider 的凭证只能来自本插件凭据库，必须每次请求现取现刷；不得写入 URL、日志或设置项，也不得把 OAuth token 放进 `x-api-key`（Claude 要求 Bearer，且 system 首块必须是 CLI 身份串）。
 5.5 卡片的 `usageByVendor` 必须保存每一家厂商的最近一次结果：新增厂商、认证成功、手动刷新都要更新它；切换厂商时不得把上一家的数字挂在新的厂商名下（未读过的厂商保持空白），也不得因为某家读取失败就清空其他厂商。
+5.6 卡片的**视觉布局不得随厂商数量变化**：环与横条只显示当前厂商的窗口，多出来的厂商只允许进入悬停提示；`verify-client.mjs` 里有对应的布局回归断言。
 6. 初始化只发一次订阅请求；同厂商验证使用 `validationInFlight` 共享。自动刷新只允许卡片里那一个 60 秒 tick 的定时器：满 5 分钟、页面可见、没有请求在途才触发，手动刷新与轮次结束刷新必须重置窗口；不得恢复重复初始化、每厂商独立轮询或隐藏页轮询。
 7. 卡片上半部分来自订阅厂商，下半部分始终来自 DeepSeek；今日用量只使用本插件余额差账本。
 8. 秘密只由 Host 持久化，API 管理不得恢复 localStorage 明文 Key。

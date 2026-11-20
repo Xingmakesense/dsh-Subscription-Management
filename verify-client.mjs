@@ -584,8 +584,33 @@ const {
         { mistral: true, antigravity: true, glm: true }
     );
     assert.deepEqual(multi.entries.map((entry) => entry.id), ["mistral", "glm", "antigravity"]);
-    assert.equal(multi.entries.length, 3, "every configured vendor appears in the card");
+    assert.equal(multi.entries.length, 3, "every configured vendor is known to the card");
     assert.equal(multi.title.includes("Mistral") && multi.title.includes("Antigravity") && multi.title.includes("GLM"), true);
+
+    // The card LAYOUT must not change when other vendors are configured: the
+    // slot ids, their order and the ring order of the active vendor stay
+    // identical, and the other vendors only extend the hover text.
+    const activeUsage = {
+        summary: { window: { duration: 1, unit: "week" }, used: 30, limit: 100, remainingPercent: 70 },
+        limits: [
+            { window: { duration: 5, unit: "hour" }, used: 0, limit: 100, remainingPercent: 100 },
+            { window: { duration: 1, unit: "month" }, used: 1, limit: 2, remainingPercent: 50 }
+        ]
+    };
+    const alone = balanceCardView({ status: "ready", vendor: "kimi", usage: activeUsage }, { status: "error" }, "moonshot/kimi-k2");
+    const crowded = balanceCardView(
+        { status: "ready", vendor: "kimi", usage: activeUsage, usageByVendor: { kimi: activeUsage, mistral: cardUsage("Mistral") } },
+        { status: "error" },
+        "moonshot/kimi-k2",
+        { mistral: true }
+    );
+    assert.deepEqual(crowded.slots.map((slot) => slot.id), alone.slots.map((slot) => slot.id),
+        "extra vendors must not add or reorder slots");
+    assert.deepEqual(crowded.renderedSlots.map((slot) => slot.id), alone.renderedSlots.map((slot) => slot.id),
+        "extra vendors must not change the ring layout");
+    assert.deepEqual(crowded.slots.map((slot) => slot.label), alone.slots.map((slot) => slot.label));
+    assert.equal(alone.title.includes("其他订阅"), false, "with a single vendor the hover text is unchanged");
+    assert.equal(crowded.title.includes("其他订阅"), true, "other vendors are listed in the hover text");
 }
 
 console.log("client subscription checks passed");

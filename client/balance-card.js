@@ -191,11 +191,19 @@
                     lines.push(`${entry.name}：${entry.pending ? "读取中" : "额度未提供"}`);
                     continue;
                 }
+                // Other subscriptions keep the exact card layout untouched; they
+                // are reachable through the same hover tooltip as the active one.
+                lines.push(`其他订阅：`);
                 lines.push(...rows.map((slot) => {
                     const percent = remainingPercentOf(slot.row);
-                    return percent === undefined
-                        ? `${entry.name} ${slot.label}：未提供`
-                        : `${entry.name} ${slot.label}：剩余 ${Math.round(percent)}%`;
+                    const opening = `· ${entry.name} ${slot.label}`;
+                    if (quotaRowAmount(slot.row) === undefined) {
+                        return percent === undefined
+                            ? `${opening}：未提供`
+                            : `${opening}：剩余 ${Math.round(percent)}%`;
+                    }
+                    const detail = percent === undefined ? "" : `（剩余 ${Math.round(percent)}%）`;
+                    return `${opening}：剩余等价额度 ${quotaRowText(slot.row)}${detail}`;
                 }));
             }
             const month = monthQuotaInfo(kimiState?.usage);
@@ -414,59 +422,6 @@
 .dsh-uak-balanceNarrow .dsh-uak-balanceStats {
     display: none;
 }
-.dsh-uak-vendorList {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-.dsh-uak-vendorActive {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 3px;
-}
-.dsh-uak-vendorActiveHead {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 6px;
-}
-.dsh-uak-vendorChip {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 1px 0;
-}
-.dsh-uak-chipName {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--dsw-alias-label-primary);
-    font-size: 11px;
-    line-height: 15px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.dsh-uak-chipMeta {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--dsw-alias-label-caption);
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.dsh-uak-chipValue {
-    flex: none;
-    color: var(--dsw-alias-label-primary);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-}
-.dsh-uak-chipValue[data-tone=ok] { color: #2fa24c; }
-.dsh-uak-chipValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-balanceNarrow:focus-visible {
     outline: 2px solid var(--dsw-alias-state-business-primary);
     outline-offset: 1px;
@@ -687,30 +642,6 @@
                 }
             }, [modelLabel, modelProvider, subscriberVendor, refreshKimi, rpc]);
 
-            const vendorNode = (entry) => {
-                const rows = quotaSlots(entry.usage);
-                const outer = rows.length === 0
-                    ? undefined
-                    : rows.reduce((longest, slot) => (slot.depth > longest.depth ? slot : longest), rows[0]);
-                const percent = remainingPercentOf(outer?.row);
-                return react.createElement("div", { className: "dsh-uak-vendorChip", key: `chip:${entry.id}`, "data-vendor": entry.id },
-                    react.createElement("span", { className: "dsh-uak-chipName" }, entry.name),
-                    react.createElement("span", {
-                        className: "dsh-uak-chipValue",
-                        "data-tone": quotaTone(percent)
-                    }, entry.pending ? "…" : formatQuotaPercent(percent)));
-            };
-            const vendorList = react.createElement("div", { className: "dsh-uak-vendorList" },
-                view.entries.map((entry) => {
-                    const rows = quotaSlots(entry.usage);
-                    if (entry.id !== kimiState.vendor || rows.length === 0) return vendorNode(entry);
-                    return react.createElement("div", { className: "dsh-uak-vendorActive", key: `active:${entry.id}`, "data-vendor": entry.id },
-                        entry.pending ? null : react.createElement("div", { className: "dsh-uak-vendorActiveHead" },
-                            react.createElement("span", { className: "dsh-uak-chipName" }, entry.name),
-                            react.createElement("span", { className: "dsh-uak-chipMeta" }, `${entry.usage?.plan ?? ""}`)),
-                        entry.pending ? null : react.createElement("div", { className: "dsh-uak-balanceRings" }, rows.map(quotaSlotNode)));
-                }));
-
             if (narrow) {
                 return react.createElement(
                     "section",
@@ -730,17 +661,9 @@
                         }
                     },
                     react.createElement("div", { className: "dsh-uak-balanceRings" },
-                        view.entries.length <= 1 && view.slots.length === 0
+                        view.slots.length === 0
                             ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
-                            : view.entries.length <= 1
-                                ? view.renderedSlots.map(quotaSlotNode)
-                                : view.entries.map((entry) => react.createElement("span", {
-                                    className: "dsh-uak-ringValue",
-                                    key: `mini:${entry.id}`,
-                                    "data-tone": quotaTone(remainingPercentOf(
-                                        quotaSlots(entry.usage).reduce((longest, slot) => (slot.depth > longest.depth ? slot : longest), quotaSlots(entry.usage)[0])?.row
-                                    ))
-                                }, entry.pending ? "…" : (subscriptionVendorName(entry.id).slice(0, 3))))),
+                            : view.renderedSlots.map(quotaSlotNode)),
                 );
             }
 
@@ -764,15 +687,10 @@
                 react.createElement("div", { className: "dsh-uak-balanceContext" },
                     react.createElement("span", { className: "dsh-uak-balanceModel" }, view.modelName),
                     react.createElement("span", { className: "dsh-uak-balancePlan", "data-tone": view.planTone }, view.planName)),
-                view.entries.length === 0
-                    ? react.createElement("div", { className: "dsh-uak-balanceRings" },
-                        react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—"))
-                    : view.entries.length === 1
-                        ? react.createElement("div", { className: "dsh-uak-balanceRings" },
-                            view.slots.length === 0
-                                ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
-                                : view.renderedSlots.map(quotaSlotNode))
-                        : vendorList,
+                react.createElement("div", { className: "dsh-uak-balanceRings" },
+                    view.slots.length === 0
+                        ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
+                        : view.renderedSlots.map(quotaSlotNode)),
                 react.createElement("div", { className: "dsh-uak-balanceStats" },
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "余额"),
