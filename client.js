@@ -216,8 +216,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
     "usage": "mistral",
     "api": "open",
     "host": "mistral.ai",
-    "consoleUrl": "https://console.mistral.ai/home?profile_dialog=api-keys",
-    "authHint": "在 console.mistral.ai 创建 API Key。额度来自官方 GET /v1/billing/budget（mistral-vibe CLI 同款）：只有月度窗口，返回的是“等价额度”（金额 + 已用百分比），不是百分比配额；账号需要 see_org_inference_usage 权限，官方 Admin API /v1/admin/usage 仅 Enterprise 可用。",
+    "consoleUrl": "https://console.mistral.ai/api-keys",
+    "authHint": "在 console.mistral.ai 左侧 API Keys 页点 Create new key（Key 只显示一次），粘贴到这里即可。额度来自官方 GET /v1/billing/budget：只有月度窗口，返回的是“等价额度”（金额 + 已用百分比），不是百分比配额；账号需要 see_org_inference_usage 权限，官方 Admin API /v1/admin/usage 仅 Enterprise 可用。",
     "modelSetup": "manual",
     "quotaKind": "amount",
     "providerIds": [

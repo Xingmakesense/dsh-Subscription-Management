@@ -1,6 +1,6 @@
 # dsh-Subscription-Management
 
-> 版本 `1.2.1` · 需要 DSH `>= 0.2.1-rc.2`
+> 版本 `1.2.2` · 需要 DSH `>= 0.2.1-rc.2`
 
 DSH 的多厂商订阅插件：左侧栏显示真实订阅额度与 DeepSeek 余额/今日用量，设置页一行一个厂商完成订阅认证；Claude 与 ChatGPT 的订阅登录会直接挂成 DSH 原生 provider，模型选完就能用。
 
@@ -30,7 +30,7 @@ DSH 的多厂商订阅插件：左侧栏显示真实订阅额度与 DeepSeek 余
 | 厂商 | 控制台 | Key 与订阅额度的关系 | 用量接口 |
 |---|---|---|---|
 | Kimi Code | https://www.kimi.com/code | 订阅后在控制台另发 API Key，走 Kimi Code 额度 | `api.kimi.com/coding/v1/usages` |
-| Mistral | https://console.mistral.ai/home?profile_dialog=api-keys | Key 属于 Workspace；额度是 Organization 的 monthly included usage，跨 Studio / API / Vibe 共享 | `GET /v1/billing/budget` + `/v1/billing/subscription` |
+| Mistral | https://console.mistral.ai/api-keys | Key 属于 Workspace；额度是 Organization 的 monthly included usage，跨 Studio / API / Vibe 共享 | `GET /v1/billing/budget` + `/v1/billing/subscription` |
 | Z.ai / GLM Coding Plan | https://z.ai/manage-apikey/apikey-list | Standard Key 与 Coding Plan Key 分开计费，用 Standard Key 不消耗订阅额度 | `api.z.ai/api/monitor/usage/quota/limit` |
 | Qwen Coding Plan | https://modelstudio.console.alibabacloud.com | Coding Plan 单独发 Key（`BAILIAN_CODING_PLAN_API_KEY`） | Model Studio 控制台 RPC |
 | MiniMax M Plan | https://platform.minimax.io | 在 Plan Details 领 M Plan Key | `token_plan/remains` |
