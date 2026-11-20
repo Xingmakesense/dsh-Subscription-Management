@@ -1,6 +1,6 @@
 {
   "name": "dsh-subscription-management",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "dsh-Subscription-Management：多厂商订阅认证、严格按提供商匹配的额度卡片，Claude/ChatGPT 订阅直挂原生 provider，以及 DeepSeek 余额/今日用量。",
   "type": "module",
   "main": "host.js",

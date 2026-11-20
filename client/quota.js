@@ -172,16 +172,36 @@
             return "error";
         }
 
+        const EMPTY_USAGE_CACHE = Object.freeze({});
+
+        /** Merge one vendor's usage map into the cache, dropping an entry when `usage` is undefined. */
+        function mergeUsageCache(cache, vendor, usage) {
+            if (typeof vendor !== "string" || vendor.length === 0) return cache;
+            if (usage === undefined) {
+                if (!Object.hasOwn(cache, vendor)) return cache;
+                const next = { ...cache };
+                delete next[vendor];
+                return next;
+            }
+            if (cache[vendor] === usage) return cache;
+            return { ...cache, [vendor]: usage };
+        }
+
         /**
          * Framework-independent polling state machine. The newest request wins,
          * stale promises cannot publish, and disposal cancels both timer and state.
+         *
+         * Every successful read is kept per vendor, so the card can show a
+         * multi-vendor snapshot and switching back to a vendor renders its last
+         * good numbers at once instead of a blank loading state.
          */
         function createQuotaController(options) {
             const rpc = options?.rpc;
             const onChange = typeof options?.onChange === "function" ? options.onChange : () => {};
             let disposed = false;
             let generation = 0;
-            let state = { status: "loading", vendor: undefined, usage: undefined, error: undefined };
+            let state = { status: "loading", vendor: undefined, usage: undefined, error: undefined, usageByVendor: EMPTY_USAGE_CACHE };
+            const cache = { ...EMPTY_USAGE_CACHE };
             const publish = (next) => {
                 if (disposed) return;
                 state = next;
@@ -191,17 +211,19 @@
                 if (disposed) return;
                 const current = ++generation;
                 const requestedVendor = typeof vendor === "string" && vendor.length > 0 ? vendor : state.vendor;
-                const vendorChanged = requestedVendor !== undefined && requestedVendor !== state.vendor;
-                const retainedUsage = vendorChanged ? undefined : state.usage;
+                // A vendor that has not been read yet starts empty rather than
+                // borrowing the previous vendor's rows under a new label.
+                const retainedUsage = requestedVendor === undefined ? state.usage : cache[requestedVendor];
                 if (rpc === undefined || rpc === null || typeof rpc.call !== "function") {
-                    publish({ status: "unavailable", vendor: requestedVendor, usage: undefined, error: undefined });
+                    publish({ status: "unavailable", vendor: requestedVendor, usage: undefined, error: undefined, usageByVendor: cache });
                     return;
                 }
                 publish({
                     status: retainedUsage === undefined ? "loading" : "refreshing",
                     vendor: requestedVendor,
                     usage: retainedUsage,
-                    error: undefined
+                    error: undefined,
+                    usageByVendor: cache
                 });
                 try {
                     const result = unwrapKimiRpc(await rpc.call(ACCOUNT_CHANNEL, "usage", {
@@ -214,7 +236,8 @@
                             status: "unauthenticated",
                             vendor: result?.vendor ?? requestedVendor,
                             usage: undefined,
-                            error: undefined
+                            error: undefined,
+                            usageByVendor: cache
                         });
                         return;
                     }
@@ -222,12 +245,18 @@
                     if (usage === null || typeof usage !== "object" || Array.isArray(usage)) {
                         throw new Error("subscription usage returned malformed data");
                     }
+                    const resolvedVendor = result.vendor ?? requestedVendor;
+                    // One cache instance is reused so later refresh calls read it.
+                    const merged = mergeUsageCache(cache, resolvedVendor, usage);
+                    for (const key of Object.keys(cache)) if (!Object.hasOwn(merged, key)) delete cache[key];
+                    Object.assign(cache, merged);
                     publish({
                         status: "ready",
-                        vendor: result.vendor ?? requestedVendor,
+                        vendor: resolvedVendor,
                         usage,
                         verified: result.verified === true,
-                        error: undefined
+                        error: undefined,
+                        usageByVendor: cache
                     });
                 } catch (error) {
                     if (disposed || current !== generation) return;
@@ -235,7 +264,8 @@
                         status: classifyQuotaError(error),
                         vendor: requestedVendor,
                         usage: retainedUsage,
-                        error: String(error?.message ?? error ?? "subscription RPC failed")
+                        error: String(error?.message ?? error ?? "subscription RPC failed"),
+                        usageByVendor: cache
                     });
                 }
             };
@@ -255,7 +285,9 @@
         }
 
         function useQuotaController(rpc, { autoStart = true } = {}) {
-            const [state, setState] = react.useState({ status: "loading", vendor: undefined, usage: undefined, error: undefined });
+            const [state, setState] = react.useState({
+                status: "loading", vendor: undefined, usage: undefined, error: undefined, usageByVendor: EMPTY_USAGE_CACHE
+            });
             const controllerRef = react.useRef(null);
             react.useEffect(() => {
                 const controller = createQuotaController({

@@ -26,6 +26,9 @@ const {
     createDeepSeekController,
     classifyDeepSeekError,
     balanceCardView,
+    vendorEntries,
+    activeVendors,
+    mergeUsageCache,
     formatQuotaPercent,
     formatCurrencyAmount,
     safeVendorLoginUrl,
@@ -395,10 +398,13 @@ const {
     const changed = switching.refresh(true, "glm");
     await tick();
     assert.equal(switching.getState().vendor, "glm");
-    assert.equal(switching.getState().usage, undefined, "old Kimi data is cleared while GLM loads");
+    assert.equal(switching.getState().usage, undefined,
+        "a vendor that has never been read starts empty instead of borrowing another vendor's rows");
     finishGlm();
     await changed;
     assert.equal(switching.getState().usage.summary.name, "glm");
+    assert.equal(switching.getState().usageByVendor.kimi.summary.name, "kimi",
+        "every vendor keeps its own entry for the multi-vendor card");
     await switching.refresh(true);
     assert.deepEqual(switchCalls.at(-1), { force: true, vendor: "glm" });
     switching.dispose();
@@ -431,6 +437,39 @@ const {
     assert.equal(shouldAutoRefresh({ now: Number.NaN, lastAt: base }), false, "an unreadable clock does not refresh");
     assert.equal(shouldAutoRefresh({ now: base - 60_000, lastAt: base }), true,
         "a backwards clock jump still retries rather than stalling forever");
+}
+
+// J2. Multi-vendor card: every configured vendor keeps its own entry, and the
+//     card lists them all instead of only the selected one.
+{
+    const usageOf = (name) => ({
+        summary: { window: { duration: 1, unit: "month" }, used: 25, limit: 100, remainingPercent: 75 },
+        limits: [],
+        plan: name
+    });
+    const entries = vendorEntries({
+        vendor: "glm",
+        usage: usageOf("glm"),
+        usageByVendor: { glm: usageOf("glm"), mistral: usageOf("mistral"), antigravity: usageOf("antigravity") }
+    }, { mistral: true, antigravity: true });
+    assert.deepEqual(entries.map((entry) => entry.id), ["glm", "antigravity", "mistral"],
+        "the selected vendor leads and the rest follow in catalog order");
+    assert.equal(entries.every((entry) => entry.pending === false), true);
+    const configuredOnly = vendorEntries({ vendor: "glm", usageByVendor: { glm: usageOf("glm") } }, { claude: true });
+    assert.deepEqual(configuredOnly.map((entry) => [entry.id, entry.pending]), [["glm", false], ["claude", true]],
+        "a configured vendor without data still appears so the card never hides a subscription");
+
+    const multi = balanceCardView(
+        { vendor: "glm", usage: usageOf("glm"), usageByVendor: { glm: usageOf("glm"), mistral: usageOf("mistral") } },
+        { status: "error" },
+        "z.ai glm-4.6",
+        { mistral: true }
+    );
+    assert.deepEqual(multi.entries.map((entry) => entry.id), ["glm", "mistral"]);
+    assert.equal(multi.title.includes("GLM"), true);
+    assert.equal(multi.title.includes("Mistral"), true, "the tooltip lists every vendor, not only the selected one");
+    const single = balanceCardView({ vendor: "kimi", usage: usageOf("kimi"), usageByVendor: { kimi: usageOf("kimi") } }, { status: "error" });
+    assert.equal(single.entries.length, 1);
 }
 
 // K. Both slot components render without throwing, including an expanded
@@ -526,6 +565,27 @@ const {
     const mistralText = JSON.stringify(expandedMistral.created.map((node) => node.children));
     assert.equal(mistralText.includes("等价额度"), true, "an amount-valued subscription is labelled as equivalent quota");
     assert.equal(mistralText.includes("Mistral Pro"), true, "the panel shows the vendor plan");
+
+    // The card renders one row per configured vendor, not just the selected one.
+    const cardUsage = (name) => ({
+        summary: { window: { duration: 1, unit: "month" }, used: 10, limit: 40, remainingPercent: 75, unit: "amount", currency: "USD" },
+        limits: [],
+        plan: name
+    });
+    const multi = balanceCardView(
+        {
+            status: "ready",
+            vendor: "mistral",
+            usage: cardUsage("Mistral"),
+            usageByVendor: { mistral: cardUsage("Mistral"), antigravity: cardUsage("Antigravity"), glm: cardUsage("GLM") }
+        },
+        { status: "ready", data: { totalBalance: 1.63, todayUsage: 0.24, currency: "CNY" } },
+        "z.ai glm-4.6",
+        { mistral: true, antigravity: true, glm: true }
+    );
+    assert.deepEqual(multi.entries.map((entry) => entry.id), ["mistral", "glm", "antigravity"]);
+    assert.equal(multi.entries.length, 3, "every configured vendor appears in the card");
+    assert.equal(multi.title.includes("Mistral") && multi.title.includes("Antigravity") && multi.title.includes("GLM"), true);
 }
 
 console.log("client subscription checks passed");

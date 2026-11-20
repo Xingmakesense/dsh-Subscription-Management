@@ -102,8 +102,46 @@
             return formatQuotaPercent(remainingPercentOf(row));
         }
 
+        /**
+         * Every configured vendor the card lists, in catalog order.
+         *
+         * A loaded usage wins; a configured vendor without a loaded usage still
+         * appears so the card never hides a subscription that is set up.
+         */
+        function activeVendors(kimiState, configured) {
+            const cache = kimiState?.usageByVendor ?? {};
+            const loaded = Object.keys(cache);
+            const list = typeof configured === "object" && configured !== null
+                ? SUBSCRIPTION_VENDORS.filter((vendor) => configured[vendor.id] === true)
+                    .map((vendor) => vendor.id)
+                : [];
+            const ids = [...new Set([...loaded, ...list])];
+            return ids.sort((left, right) => {
+                const order = SUBSCRIPTION_VENDORS.map((vendor) => vendor.id);
+                return order.indexOf(left) - order.indexOf(right);
+            });
+        }
+
+        /** Vendor list + per-vendor usage rows + the vendors still without data. */
+        function vendorEntries(kimiState, configured) {
+            const cache = kimiState?.usageByVendor ?? {};
+            const ids = activeVendors(kimiState, configured);
+            const current = kimiState?.vendor;
+            // The vendor being read comes first so its spinner/preview is visible.
+            if (typeof current === "string" && ids.includes(current)) {
+                ids.splice(ids.indexOf(current), 1);
+                ids.unshift(current);
+            }
+            return ids.map((id) => ({
+                id,
+                name: subscriptionVendorName(id),
+                usage: cache[id],
+                pending: cache[id] === undefined
+            }));
+        }
+
         /** Pure card projection, also used by regression tests. */
-        function balanceCardView(kimiState, deepState, modelLabel) {
+        function balanceCardView(kimiState, deepState, modelLabel, configured) {
             const slots = quotaSlots(kimiState?.usage);
             const data = deepState?.data;
             const deepCurrency = data?.currency ?? DEEPSEEK_FALLBACK_CURRENCY;
@@ -145,6 +183,21 @@
                     lines.push(`${vendorName} ${view.label}：剩余 ${Math.round(view.percent)}%${reset}`);
                 }
             }
+            const entries = vendorEntries(kimiState, configured);
+            for (const entry of entries) {
+                if (entry.id === kimiState?.vendor) continue;
+                const rows = quotaSlots(entry.usage);
+                if (rows.length === 0) {
+                    lines.push(`${entry.name}：${entry.pending ? "读取中" : "额度未提供"}`);
+                    continue;
+                }
+                lines.push(...rows.map((slot) => {
+                    const percent = remainingPercentOf(slot.row);
+                    return percent === undefined
+                        ? `${entry.name} ${slot.label}：未提供`
+                        : `${entry.name} ${slot.label}：剩余 ${Math.round(percent)}%`;
+                }));
+            }
             const month = monthQuotaInfo(kimiState?.usage);
             if (month.source === "booster" && !views.some((view) => view.id === "month")) {
                 lines.push(`${vendorName} Booster 月度限额（不是订阅固定月额度）：剩余 ${Math.round(month.percent)}%`);
@@ -168,6 +221,7 @@
                 lines.push(`DeepSeek 刷新提示：${deepState.error}`);
             }
             return {
+                entries,
                 vendorName,
                 modelName: typeof modelLabel === "string" && modelLabel.length > 0 ? modelLabel : "当前模型",
                 planName: kimiState?.usage?.plan ?? vendor?.plan ?? "订阅",
@@ -360,6 +414,59 @@
 .dsh-uak-balanceNarrow .dsh-uak-balanceStats {
     display: none;
 }
+.dsh-uak-vendorList {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.dsh-uak-vendorActive {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+.dsh-uak-vendorActiveHead {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+}
+.dsh-uak-vendorChip {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 1px 0;
+}
+.dsh-uak-chipName {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dsw-alias-label-primary);
+    font-size: 11px;
+    line-height: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dsh-uak-chipMeta {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dsw-alias-label-caption);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dsh-uak-chipValue {
+    flex: none;
+    color: var(--dsw-alias-label-primary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.dsh-uak-chipValue[data-tone=ok] { color: #2fa24c; }
+.dsh-uak-chipValue[data-tone=low] { color: #e0433f; }
 .dsh-uak-balanceNarrow:focus-visible {
     outline: 2px solid var(--dsw-alias-state-business-primary);
     outline-offset: 1px;
@@ -490,13 +597,35 @@
             const refreshAll = react.useCallback(() => {
                 lastRefreshAt.current = Date.now();
                 refreshKimi(true, preferredVendor.current);
+                for (const vendor of configuredRef.current) {
+                    if (vendor !== preferredVendor.current) refreshKimi(true, vendor);
+                }
                 refreshDeep(true);
             }, [refreshKimi, refreshDeep]);
             const sessionsHook = typeof useSessions === "function" ? useSessions : useNoSessions;
             const runningIds = sessionsHook(runningSessionIds);
             const modelLabel = sessionsHook(activeModelLabel);
             const modelProvider = sessionsHook(activeModelProvider);
-            const view = balanceCardView(kimiState, deepState, modelLabel);
+            // Every configured vendor is read once, so the card can list them all.
+            const configuredVendors = react.useMemo(() => vendorOrder(readStoredList(SUBSCRIPTION_HIDDEN_KEY)), []);
+            const configuredRef = react.useRef(configuredVendors);
+            configuredRef.current = configuredVendors;
+            const requested = react.useRef(new Set());
+            const readVendor = (vendor, force) => {
+                if (typeof vendor !== "string" || vendor.length === 0) return;
+                requested.current.add(vendor);
+                refreshKimi(force, vendor);
+            };
+            const readConfigured = () => {
+                for (const vendor of configuredRef.current) readVendor(vendor, false);
+            };
+            // Configured vendors plus everything already read: the active card is
+            // driven by live data, not by the stored order snapshot.
+            const view = balanceCardView(kimiState, deepState, modelLabel, Object.fromEntries(
+                [...new Set([...configuredVendors, ...Object.keys(kimiState?.usageByVendor ?? {}), ...(kimiState?.vendor ? [kimiState.vendor] : [])])]
+                    .filter((vendor) => typeof vendor === "string" && vendor.length > 0)
+                    .map((vendor) => [vendor, true])
+            ));
             const previousRunning = react.useRef(runningIds);
             react.useEffect(() => {
                 const ended = endedRunningSessions(previousRunning.current, runningIds);
@@ -505,9 +634,15 @@
             }, [runningIds, refreshAll]);
             react.useEffect(() => {
                 const onAuth = () => {
+                    // The settings page announces a finished verification; the
+                    // freshly verified vendor becomes the one the card shows and
+                    // its usage is read immediately instead of after the next tick.
                     initialRequested.current = true;
                     const active = readActiveVendor();
-                    if (active !== undefined) preferredVendor.current = active;
+                    if (active !== undefined) {
+                        preferredVendor.current = active;
+                        refreshKimi(true, active);
+                    }
                     refreshAll();
                 };
                 window.addEventListener(KIMI_AUTH_EVENT, onAuth);
@@ -515,6 +650,7 @@
             }, [refreshAll]);
             react.useEffect(() => {
                 initialRequested.current = false;
+                readConfigured();
             }, [rpc]);
             // Five-minute cadence: one ticker for the card, skipped while the
             // page is hidden or a request is still in flight. A manual refresh
@@ -546,7 +682,34 @@
                 const initial = preferredVendor.current ?? subscriberVendor;
                 preferredVendor.current = initial;
                 refreshKimi(false, initial);
+                for (const other of configuredRef.current) {
+                    if (other !== initial) refreshKimi(false, other);
+                }
             }, [modelLabel, modelProvider, subscriberVendor, refreshKimi, rpc]);
+
+            const vendorNode = (entry) => {
+                const rows = quotaSlots(entry.usage);
+                const outer = rows.length === 0
+                    ? undefined
+                    : rows.reduce((longest, slot) => (slot.depth > longest.depth ? slot : longest), rows[0]);
+                const percent = remainingPercentOf(outer?.row);
+                return react.createElement("div", { className: "dsh-uak-vendorChip", key: `chip:${entry.id}`, "data-vendor": entry.id },
+                    react.createElement("span", { className: "dsh-uak-chipName" }, entry.name),
+                    react.createElement("span", {
+                        className: "dsh-uak-chipValue",
+                        "data-tone": quotaTone(percent)
+                    }, entry.pending ? "…" : formatQuotaPercent(percent)));
+            };
+            const vendorList = react.createElement("div", { className: "dsh-uak-vendorList" },
+                view.entries.map((entry) => {
+                    const rows = quotaSlots(entry.usage);
+                    if (entry.id !== kimiState.vendor || rows.length === 0) return vendorNode(entry);
+                    return react.createElement("div", { className: "dsh-uak-vendorActive", key: `active:${entry.id}`, "data-vendor": entry.id },
+                        entry.pending ? null : react.createElement("div", { className: "dsh-uak-vendorActiveHead" },
+                            react.createElement("span", { className: "dsh-uak-chipName" }, entry.name),
+                            react.createElement("span", { className: "dsh-uak-chipMeta" }, `${entry.usage?.plan ?? ""}`)),
+                        entry.pending ? null : react.createElement("div", { className: "dsh-uak-balanceRings" }, rows.map(quotaSlotNode)));
+                }));
 
             if (narrow) {
                 return react.createElement(
@@ -567,9 +730,17 @@
                         }
                     },
                     react.createElement("div", { className: "dsh-uak-balanceRings" },
-                        view.slots.length === 0
+                        view.entries.length <= 1 && view.slots.length === 0
                             ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
-                            : view.renderedSlots.map(quotaSlotNode)),
+                            : view.entries.length <= 1
+                                ? view.renderedSlots.map(quotaSlotNode)
+                                : view.entries.map((entry) => react.createElement("span", {
+                                    className: "dsh-uak-ringValue",
+                                    key: `mini:${entry.id}`,
+                                    "data-tone": quotaTone(remainingPercentOf(
+                                        quotaSlots(entry.usage).reduce((longest, slot) => (slot.depth > longest.depth ? slot : longest), quotaSlots(entry.usage)[0])?.row
+                                    ))
+                                }, entry.pending ? "…" : (subscriptionVendorName(entry.id).slice(0, 3))))),
                 );
             }
 
@@ -593,10 +764,15 @@
                 react.createElement("div", { className: "dsh-uak-balanceContext" },
                     react.createElement("span", { className: "dsh-uak-balanceModel" }, view.modelName),
                     react.createElement("span", { className: "dsh-uak-balancePlan", "data-tone": view.planTone }, view.planName)),
-                react.createElement("div", { className: "dsh-uak-balanceRings" },
-                    view.slots.length === 0
-                        ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
-                        : view.renderedSlots.map(quotaSlotNode)),
+                view.entries.length === 0
+                    ? react.createElement("div", { className: "dsh-uak-balanceRings" },
+                        react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—"))
+                    : view.entries.length === 1
+                        ? react.createElement("div", { className: "dsh-uak-balanceRings" },
+                            view.slots.length === 0
+                                ? react.createElement("span", { className: "dsh-uak-ringValue", "data-tone": "unknown" }, "—")
+                                : view.renderedSlots.map(quotaSlotNode))
+                        : vendorList,
                 react.createElement("div", { className: "dsh-uak-balanceStats" },
                     react.createElement("div", { className: "dsh-uak-stat" },
                         react.createElement("span", { className: "dsh-uak-statLabel" }, "余额"),
