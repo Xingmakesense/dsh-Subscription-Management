@@ -1015,23 +1015,48 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
         }
 
         /**
-         * Which subscription vendor owns an exact provider route.
+         * The words a provider id is built from.
          *
-         * Strict by design: only the **provider** decides, and only on an exact
-         * match. A third-party relay that happens to serve `glm-4.6` is not the
-         * Z.ai subscription, so model names are never evidence on their own.
+         * Deployments name the same subscription differently (`mistral`,
+         * `mistral-vibecode`, `z.ai`, `zai-glm`, `google-gemini`), so the route is
+         * also matched word by word. Dots stay inside a word because "z.ai" is a
+         * provider id, not the word "z".
+         */
+        function providerWords(provider) {
+            if (typeof provider !== "string") return [];
+            return provider
+                .trim()
+                .toLowerCase()
+                .split(/[^a-z0-9.]+/u)
+                .map((word) => word.replace(/^\.+|\.+$/gu, ""))
+                .filter((word) => word.length > 0);
+        }
+
+        /**
+         * Which subscription vendor owns a provider route.
+         *
+         * Only the **provider** is evidence — never the model name: a relay that
+         * happens to serve `glm-4.6` is not the Z.ai subscription. The whole route
+         * is matched first, then each word of it, so `mistral-vibecode` still
+         * resolves to Mistral without any per-deployment hard-coding.
          */
         function vendorForProvider(provider) {
-            if (typeof provider !== "string") return undefined;
-            const route = provider.trim().toLowerCase();
+            const route = typeof provider === "string" ? provider.trim().toLowerCase() : "";
             if (route.length === 0) return undefined;
-            return SUBSCRIPTION_VENDORS.find((vendor) => providerRouteIds(vendor).includes(route))?.id;
+            const exact = SUBSCRIPTION_VENDORS.find((vendor) => providerRouteIds(vendor).includes(route));
+            if (exact !== undefined) return exact.id;
+            const words = providerWords(provider);
+            if (words.length === 0) return undefined;
+            const matched = SUBSCRIPTION_VENDORS.find((vendor) =>
+                providerRouteIds(vendor).some((id) => words.includes(id)));
+            return matched?.id;
         }
 
         /** Which subscription vendor the selected model belongs to, if any. */
         function vendorForModel(model, provider) {
             if (typeof provider === "string" && provider.trim().length > 0) return vendorForProvider(provider);
-            // A bare label counts only when it is exactly a known provider route.
+            // Without a provider field the label is the only evidence available;
+            // it still has to name a provider route, never a bare model id.
             return vendorForProvider(model);
         }
 

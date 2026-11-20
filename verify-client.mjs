@@ -202,6 +202,19 @@ const {
     assert.equal(vendorForModel("kimi-k2", "moonshot"), "kimi");
     assert.equal(vendorForModel(undefined, "protocom-codex"), "protocom");
     assert.equal(vendorForModel("deepseek-flash", "deepseek"), undefined);
+    // A deployment may name the same subscription differently; the provider id
+    // is matched word by word so no per-deployment mapping is needed.
+    assert.equal(vendorForProvider("mistral-vibecode"), "mistral", "a compound provider id still resolves");
+    assert.equal(vendorForProvider("zai-glm"), "glm");
+    assert.equal(vendorForProvider("google-gemini"), "gemini");
+    assert.equal(vendorForProvider("anthropic-claude"), "claude");
+    assert.equal(vendorForProvider("kimi-k3"), "kimi");
+    assert.equal(vendorForProvider("opencode-go-sub"), "opencode-go");
+    assert.equal(vendorForProvider("my-relay"), undefined, "an unknown provider stays unknown");
+    assert.equal(vendorForProvider("openrouter"), undefined);
+    assert.equal(vendorForProvider("deepseek"), undefined);
+    assert.equal(vendorForModel("deepseek-v4-1-flash-1017", "mistral-vibecode"), "mistral",
+        "the provider decides even when the model id names another brand");
     assert.equal(vendorForProvider("openai"), undefined, "a plain OpenAI key is not a ChatGPT subscription");
     assert.equal(vendorForProvider("chatgpt"), "chatgpt");
     assert.equal(vendorForProvider(""), undefined);

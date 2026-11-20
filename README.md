@@ -1,12 +1,12 @@
 # dsh-Subscription-Management
 
-> 版本 `1.3.2` · 需要 DSH `>= 0.2.1-rc.2`
+> 版本 `1.3.3` · 需要 DSH `>= 0.2.1-rc.2`
 
 DSH 的多厂商订阅插件：左侧栏显示真实订阅额度与 DeepSeek 余额/今日用量，设置页一行一个厂商完成订阅认证；Claude 与 ChatGPT 的订阅登录会直接挂成 DSH 原生 provider，模型选完就能用。
 
 ## 三条设计原则
 
-1. **订阅按提供商精确匹配。** 只有当前模型所属的 provider 完全等于该厂商声明的 `providerIds` 时，卡片才显示这家订阅的额度；第三方中转商提供的同名模型不会被当成官方订阅。
+1. **订阅按提供商匹配，模型名永不作为依据。** 先比对整串 provider id（`providerIds`），再按 provider id 的单词比对（`mistral-vibecode` → Mistral、`zai-glm` → GLM、`google-gemini` → Gemini），因此同一家订阅在不同部署里叫法不同也能自动适配；而 `my-relay`、`openrouter` 这类中转商不会被误判成官方订阅。
 2. **API Key 类订阅不替用户写模型设置。** Kimi Code、Mistral、Z.ai / GLM、Qwen、MiniMax、Cerebras、Kilo 等由你在控制台创建“走订阅的 API Key”，模型也在 DSH 设置 → 模型中自己添加；插件只做认证与额度。
 3. **登录类订阅由插件接下。** Claude Pro/Max 与 ChatGPT Plus/Pro 没有可用 API Key，只有 OAuth 登录，所以本插件把它们挂成原生 provider（`claude-subscription` / `codex-subscription`）。连同 Protocom、OpenCode Go、Command Code、ClinePass（插件自带 provider runtime），这 6 家在认证后自动写入对应 provider 分组、上下文档位与图片能力。
 
