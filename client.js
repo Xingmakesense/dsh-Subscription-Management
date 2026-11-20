@@ -713,38 +713,55 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 state = next;
                 onChange(state);
             };
-            const refresh = async (force = false, vendor) => {
+            /**
+             * Read one vendor's usage.
+             *
+             * `options.primary === false` marks a BACKGROUND read: it refreshes
+             * that vendor's cached entry for the card's hover text but must never
+             * change which vendor the card shows, its status, or the in-flight
+             * generation. Without that split a background sweep of every vendor
+             * made the card land on whichever request answered last.
+             */
+            const refresh = async (force = false, vendor, options = {}) => {
                 if (disposed) return;
-                const current = ++generation;
+                const primary = options?.primary !== false;
+                const current = primary ? ++generation : generation;
                 const requestedVendor = typeof vendor === "string" && vendor.length > 0 ? vendor : state.vendor;
-                // A vendor that has not been read yet starts empty rather than
-                // borrowing the previous vendor's rows under a new label.
-                const retainedUsage = requestedVendor === undefined ? state.usage : cache[requestedVendor];
+                const retainedUsage = primary
+                    // A vendor that has not been read yet starts empty rather
+                    // than borrowing the previous vendor's rows under a new label.
+                    ? (requestedVendor === undefined ? state.usage : cache[requestedVendor])
+                    : state.usage;
                 if (rpc === undefined || rpc === null || typeof rpc.call !== "function") {
-                    publish({ status: "unavailable", vendor: requestedVendor, usage: undefined, error: undefined, usageByVendor: cache });
+                    if (primary) publish({ status: "unavailable", vendor: requestedVendor, usage: undefined, error: undefined, usageByVendor: cache });
                     return;
                 }
-                publish({
-                    status: retainedUsage === undefined ? "loading" : "refreshing",
-                    vendor: requestedVendor,
-                    usage: retainedUsage,
-                    error: undefined,
-                    usageByVendor: cache
-                });
+                if (primary) {
+                    publish({
+                        status: retainedUsage === undefined ? "loading" : "refreshing",
+                        vendor: requestedVendor,
+                        usage: retainedUsage,
+                        error: undefined,
+                        usageByVendor: cache
+                    });
+                }
                 try {
                     const result = unwrapKimiRpc(await rpc.call(ACCOUNT_CHANNEL, "usage", {
                         force: force === true,
                         ...(requestedVendor === undefined ? {} : { vendor: requestedVendor })
                     }));
-                    if (disposed || current !== generation) return;
+                    if (disposed) return;
+                    if (primary && current !== generation) return;
                     if (result?.configured === false || result?.authenticated !== true) {
-                        publish({
-                            status: "unauthenticated",
-                            vendor: result?.vendor ?? requestedVendor,
-                            usage: undefined,
-                            error: undefined,
-                            usageByVendor: cache
-                        });
+                        if (primary) {
+                            publish({
+                                status: "unauthenticated",
+                                vendor: result?.vendor ?? requestedVendor,
+                                usage: undefined,
+                                error: undefined,
+                                usageByVendor: cache
+                            });
+                        }
                         return;
                     }
                     const usage = result.usage;
@@ -756,6 +773,10 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     const merged = mergeUsageCache(cache, resolvedVendor, usage);
                     for (const key of Object.keys(cache)) if (!Object.hasOwn(merged, key)) delete cache[key];
                     Object.assign(cache, merged);
+                    if (!primary) {
+                        publish({ ...state, usageByVendor: cache });
+                        return;
+                    }
                     publish({
                         status: "ready",
                         vendor: resolvedVendor,
@@ -765,7 +786,10 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                         usageByVendor: cache
                     });
                 } catch (error) {
-                    if (disposed || current !== generation) return;
+                    if (disposed) return;
+                    // A background read keeps its vendor's last good numbers and
+                    // never reports an error over the selected one.
+                    if (!primary || current !== generation) return;
                     publish({
                         status: classifyQuotaError(error),
                         vendor: requestedVendor,
@@ -807,8 +831,8 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     controller.dispose();
                 };
             }, [rpc]);
-            const refresh = react.useCallback((force = false, vendor) => {
-                void controllerRef.current?.refresh(force, vendor);
+            const refresh = react.useCallback((force = false, vendor, options) => {
+                void controllerRef.current?.refresh(force, vendor, options);
             }, []);
             return [state, refresh];
         }
@@ -1495,9 +1519,11 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             busyRef.current = busy;
             const refreshAll = react.useCallback(() => {
                 lastRefreshAt.current = Date.now();
+                // The selected vendor is the only primary read; the rest only
+                // refresh their cached entries so the card cannot jump around.
                 refreshKimi(true, preferredVendor.current);
                 for (const vendor of configuredRef.current) {
-                    if (vendor !== preferredVendor.current) refreshKimi(true, vendor);
+                    if (vendor !== preferredVendor.current) refreshKimi(true, vendor, { primary: false });
                 }
                 refreshDeep(true);
             }, [refreshKimi, refreshDeep]);
@@ -1510,10 +1536,15 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
             const configuredRef = react.useRef(configuredVendors);
             configuredRef.current = configuredVendors;
             const requested = react.useRef(new Set());
+            // The model-linked vendor wins over the "just verified" convenience:
+            // the card follows the model selector whenever it can name a vendor.
+            const modelVendorRef = react.useRef(undefined);
+            modelVendorRef.current = vendorForModel(modelLabel, modelProvider);
+            // A background read only fills that vendor's entry for the hover text.
             const readVendor = (vendor, force) => {
                 if (typeof vendor !== "string" || vendor.length === 0) return;
                 requested.current.add(vendor);
-                refreshKimi(force, vendor);
+                refreshKimi(force, vendor, { primary: false });
             };
             const readConfigured = () => {
                 for (const vendor of configuredRef.current) readVendor(vendor, false);
@@ -1537,7 +1568,7 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                     // freshly verified vendor becomes the one the card shows and
                     // its usage is read immediately instead of after the next tick.
                     initialRequested.current = true;
-                    const active = readActiveVendor();
+                    const active = modelVendorRef.current ?? readActiveVendor();
                     if (active !== undefined) {
                         preferredVendor.current = active;
                         refreshKimi(true, active);
@@ -1582,9 +1613,20 @@ const DEFAULT_OPTIONS = Object.freeze({ enabled: true });
                 preferredVendor.current = initial;
                 refreshKimi(false, initial);
                 for (const other of configuredRef.current) {
-                    if (other !== initial) refreshKimi(false, other);
+                    if (other !== initial) refreshKimi(false, other, { primary: false });
                 }
             }, [modelLabel, modelProvider, subscriberVendor, refreshKimi, rpc]);
+
+            // A vendor named by the model selector is authoritative: if a stale
+            // preference (e.g. the vendor verified in the settings page) is still
+            // selected, switch back as soon as the card renders.
+            react.useEffect(() => {
+                const vendor = vendorForModel(modelLabel, modelProvider);
+                if (vendor === undefined) return;
+                if (vendor === kimiState.vendor) return;
+                preferredVendor.current = vendor;
+                refreshKimi(true, vendor);
+            }, [modelLabel, modelProvider, kimiState.vendor, refreshKimi]);
 
             if (narrow) {
                 return react.createElement(

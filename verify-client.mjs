@@ -409,6 +409,65 @@ const {
     assert.deepEqual(switchCalls.at(-1), { force: true, vendor: "glm" });
     switching.dispose();
 
+    // A background sweep must not steal the selected vendor: only the primary
+    // read decides what the card shows, and a later background request must not
+    // discard the primary result still in flight.
+    const sweepCalls = [];
+    let finishPrimary;
+    const sweeping = createQuotaController({
+        rpc: {
+            call: async (_channel, _endpoint, payload) => {
+                sweepCalls.push(payload.vendor);
+                const value = {
+                    configured: true, authenticated: true, verified: true,
+                    vendor: payload.vendor,
+                    usage: { summary: { name: payload.vendor }, limits: [], extraUsage: null }
+                };
+                if (payload.vendor === "kimi" && finishPrimary === undefined) {
+                    return new Promise((resolve) => { finishPrimary = () => resolve(response(value)); });
+                }
+                return response(value);
+            }
+        }
+    });
+    const primaryPending = sweeping.refresh(true, "kimi");
+    await tick();
+    assert.equal(sweeping.getState().vendor, "kimi");
+    await sweeping.refresh(true, "mistral", { primary: false });
+    await sweeping.refresh(true, "antigravity", { primary: false });
+    assert.equal(sweeping.getState().vendor, "kimi", "background reads must not change the selected vendor");
+    assert.equal(sweeping.getState().usage, undefined, "the selected vendor keeps its loading state");
+    assert.equal(sweeping.getState().usageByVendor.mistral.summary.name, "mistral",
+        "background reads still fill their own entry");
+    finishPrimary();
+    await primaryPending;
+    assert.equal(sweeping.getState().usage.summary.name, "kimi",
+        "a primary result in flight must survive later background requests");
+    assert.equal(sweeping.getState().status, "ready");
+    await sweeping.refresh(true, "mistral", { primary: false });
+    assert.equal(sweeping.getState().vendor, "kimi", "a background sweep never moves the card");
+    assert.equal(sweeping.getState().status, "ready");
+    assert.equal(typeof sweeping.getState().error, "undefined");
+    sweeping.dispose();
+
+    // A failing background read stays silent and keeps the other rows intact.
+    const failing = createQuotaController({
+        rpc: {
+            call: async (_channel, _endpoint, payload) => {
+                if (payload.vendor === "glm") throw new Error("glm upstream down");
+                return response({ configured: true, authenticated: true, verified: true, vendor: payload.vendor, usage: readyUsage(payload.vendor) });
+            }
+        }
+    });
+    await failing.refresh(true, "kimi");
+    await failing.refresh(true, "glm", { primary: false });
+    assert.equal(failing.getState().status, "ready", "a background failure must not turn the card into an error");
+    assert.equal(typeof failing.getState().error, "undefined");
+    assert.equal(failing.getState().usage.summary.name, "kimi");
+    assert.equal(Object.hasOwn(failing.getState().usageByVendor, "glm"), false,
+        "a vendor that failed has no entry of its own");
+    failing.dispose();
+
     assert.equal(runningSessionIds({ byId: { a: { running: true }, b: { running: false } } }), "a");
     assert.equal(endedRunningSessions("a,b", "b"), true, "a stopped session must trigger refresh");
     assert.equal(endedRunningSessions("a", "a"), false, "an unchanged running set must not refresh");

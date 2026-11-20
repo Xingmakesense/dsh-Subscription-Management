@@ -207,38 +207,55 @@
                 state = next;
                 onChange(state);
             };
-            const refresh = async (force = false, vendor) => {
+            /**
+             * Read one vendor's usage.
+             *
+             * `options.primary === false` marks a BACKGROUND read: it refreshes
+             * that vendor's cached entry for the card's hover text but must never
+             * change which vendor the card shows, its status, or the in-flight
+             * generation. Without that split a background sweep of every vendor
+             * made the card land on whichever request answered last.
+             */
+            const refresh = async (force = false, vendor, options = {}) => {
                 if (disposed) return;
-                const current = ++generation;
+                const primary = options?.primary !== false;
+                const current = primary ? ++generation : generation;
                 const requestedVendor = typeof vendor === "string" && vendor.length > 0 ? vendor : state.vendor;
-                // A vendor that has not been read yet starts empty rather than
-                // borrowing the previous vendor's rows under a new label.
-                const retainedUsage = requestedVendor === undefined ? state.usage : cache[requestedVendor];
+                const retainedUsage = primary
+                    // A vendor that has not been read yet starts empty rather
+                    // than borrowing the previous vendor's rows under a new label.
+                    ? (requestedVendor === undefined ? state.usage : cache[requestedVendor])
+                    : state.usage;
                 if (rpc === undefined || rpc === null || typeof rpc.call !== "function") {
-                    publish({ status: "unavailable", vendor: requestedVendor, usage: undefined, error: undefined, usageByVendor: cache });
+                    if (primary) publish({ status: "unavailable", vendor: requestedVendor, usage: undefined, error: undefined, usageByVendor: cache });
                     return;
                 }
-                publish({
-                    status: retainedUsage === undefined ? "loading" : "refreshing",
-                    vendor: requestedVendor,
-                    usage: retainedUsage,
-                    error: undefined,
-                    usageByVendor: cache
-                });
+                if (primary) {
+                    publish({
+                        status: retainedUsage === undefined ? "loading" : "refreshing",
+                        vendor: requestedVendor,
+                        usage: retainedUsage,
+                        error: undefined,
+                        usageByVendor: cache
+                    });
+                }
                 try {
                     const result = unwrapKimiRpc(await rpc.call(ACCOUNT_CHANNEL, "usage", {
                         force: force === true,
                         ...(requestedVendor === undefined ? {} : { vendor: requestedVendor })
                     }));
-                    if (disposed || current !== generation) return;
+                    if (disposed) return;
+                    if (primary && current !== generation) return;
                     if (result?.configured === false || result?.authenticated !== true) {
-                        publish({
-                            status: "unauthenticated",
-                            vendor: result?.vendor ?? requestedVendor,
-                            usage: undefined,
-                            error: undefined,
-                            usageByVendor: cache
-                        });
+                        if (primary) {
+                            publish({
+                                status: "unauthenticated",
+                                vendor: result?.vendor ?? requestedVendor,
+                                usage: undefined,
+                                error: undefined,
+                                usageByVendor: cache
+                            });
+                        }
                         return;
                     }
                     const usage = result.usage;
@@ -250,6 +267,10 @@
                     const merged = mergeUsageCache(cache, resolvedVendor, usage);
                     for (const key of Object.keys(cache)) if (!Object.hasOwn(merged, key)) delete cache[key];
                     Object.assign(cache, merged);
+                    if (!primary) {
+                        publish({ ...state, usageByVendor: cache });
+                        return;
+                    }
                     publish({
                         status: "ready",
                         vendor: resolvedVendor,
@@ -259,7 +280,10 @@
                         usageByVendor: cache
                     });
                 } catch (error) {
-                    if (disposed || current !== generation) return;
+                    if (disposed) return;
+                    // A background read keeps its vendor's last good numbers and
+                    // never reports an error over the selected one.
+                    if (!primary || current !== generation) return;
                     publish({
                         status: classifyQuotaError(error),
                         vendor: requestedVendor,
@@ -301,8 +325,8 @@
                     controller.dispose();
                 };
             }, [rpc]);
-            const refresh = react.useCallback((force = false, vendor) => {
-                void controllerRef.current?.refresh(force, vendor);
+            const refresh = react.useCallback((force = false, vendor, options) => {
+                void controllerRef.current?.refresh(force, vendor, options);
             }, []);
             return [state, refresh];
         }

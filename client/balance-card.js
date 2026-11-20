@@ -551,9 +551,11 @@
             busyRef.current = busy;
             const refreshAll = react.useCallback(() => {
                 lastRefreshAt.current = Date.now();
+                // The selected vendor is the only primary read; the rest only
+                // refresh their cached entries so the card cannot jump around.
                 refreshKimi(true, preferredVendor.current);
                 for (const vendor of configuredRef.current) {
-                    if (vendor !== preferredVendor.current) refreshKimi(true, vendor);
+                    if (vendor !== preferredVendor.current) refreshKimi(true, vendor, { primary: false });
                 }
                 refreshDeep(true);
             }, [refreshKimi, refreshDeep]);
@@ -566,10 +568,15 @@
             const configuredRef = react.useRef(configuredVendors);
             configuredRef.current = configuredVendors;
             const requested = react.useRef(new Set());
+            // The model-linked vendor wins over the "just verified" convenience:
+            // the card follows the model selector whenever it can name a vendor.
+            const modelVendorRef = react.useRef(undefined);
+            modelVendorRef.current = vendorForModel(modelLabel, modelProvider);
+            // A background read only fills that vendor's entry for the hover text.
             const readVendor = (vendor, force) => {
                 if (typeof vendor !== "string" || vendor.length === 0) return;
                 requested.current.add(vendor);
-                refreshKimi(force, vendor);
+                refreshKimi(force, vendor, { primary: false });
             };
             const readConfigured = () => {
                 for (const vendor of configuredRef.current) readVendor(vendor, false);
@@ -593,7 +600,7 @@
                     // freshly verified vendor becomes the one the card shows and
                     // its usage is read immediately instead of after the next tick.
                     initialRequested.current = true;
-                    const active = readActiveVendor();
+                    const active = modelVendorRef.current ?? readActiveVendor();
                     if (active !== undefined) {
                         preferredVendor.current = active;
                         refreshKimi(true, active);
@@ -638,9 +645,20 @@
                 preferredVendor.current = initial;
                 refreshKimi(false, initial);
                 for (const other of configuredRef.current) {
-                    if (other !== initial) refreshKimi(false, other);
+                    if (other !== initial) refreshKimi(false, other, { primary: false });
                 }
             }, [modelLabel, modelProvider, subscriberVendor, refreshKimi, rpc]);
+
+            // A vendor named by the model selector is authoritative: if a stale
+            // preference (e.g. the vendor verified in the settings page) is still
+            // selected, switch back as soon as the card renders.
+            react.useEffect(() => {
+                const vendor = vendorForModel(modelLabel, modelProvider);
+                if (vendor === undefined) return;
+                if (vendor === kimiState.vendor) return;
+                preferredVendor.current = vendor;
+                refreshKimi(true, vendor);
+            }, [modelLabel, modelProvider, kimiState.vendor, refreshKimi]);
 
             if (narrow) {
                 return react.createElement(
